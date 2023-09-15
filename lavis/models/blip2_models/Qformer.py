@@ -163,6 +163,7 @@ class BertSelfAttention(nn.Module):
             self.num_attention_heads,
             self.attention_head_size,
         )
+        #import pdb; pdb.set_trace()
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
@@ -181,7 +182,7 @@ class BertSelfAttention(nn.Module):
         # and values come from an encoder; the attention mask needs to be
         # such that the encoder's padding tokens are not attended to.
         is_cross_attention = encoder_hidden_states is not None
-
+        #import pdb; pdb.set_trace()
         if is_cross_attention:
             key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
             value_layer = self.transpose_for_scores(self.value(encoder_hidden_states))
@@ -898,11 +899,14 @@ class BertModel(BertPreTrainedModel):
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
+        #import pdb; pdb.set_trace()
         if encoder_hidden_states is not None:
             if type(encoder_hidden_states) == list:
                 encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[
                     0
                 ].size()
+            elif encoder_hidden_states.dim() == 2:
+                encoder_batch_size, encoder_sequence_length = encoder_hidden_states.size()
             else:
                 (
                     encoder_batch_size,
@@ -921,6 +925,7 @@ class BertModel(BertPreTrainedModel):
                     encoder_attention_mask
                 )
             else:
+                #import pdb; pdb.set_trace()
                 encoder_extended_attention_mask = self.invert_attention_mask(
                     encoder_attention_mask
                 )

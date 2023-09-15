@@ -324,8 +324,9 @@ class Blip2T5Instruct(Blip2Base):
             query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
             Qformer_atts = torch.cat([query_atts,text_Qformer.attention_mask],dim=1)
 
-        # For video data
-        if image.dim() == 5:
+        # For video data (disable for now)
+        # TODO: Handle more gracefully (e.g. use "video" instead of "image")
+        if False and image.dim() == 5:
             inputs_t5, atts_t5 = [], []
             for j in range(image.size(2)):
                 this_frame = image[:,:,j,:,:]
@@ -359,6 +360,7 @@ class Blip2T5Instruct(Blip2Base):
         else:
             with self.maybe_autocast():
                 image_embeds = self.ln_vision(self.visual_encoder(image))
+            #import pdb; pdb.set_trace()
             image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
             if self.qformer_text_input:
@@ -782,3 +784,46 @@ class Blip2T5Instruct(Blip2Base):
         model.load_checkpoint_from_config(cfg)
 
         return model
+
+@registry.register_model("blip2_t5_instruct_video")
+class Blip2T5InstructVideo(Blip2T5Instruct):
+    PRETRAINED_MODEL_CONFIG_DICT = {
+        "flant5xl": "configs/models/blip2/blip2_instruct_flant5xl.yaml",
+        "flant5xxl": "configs/models/blip2/blip2_instruct_flant5xxl.yaml",
+    }
+
+    def __init__(
+        self,
+        vit_model="eva_clip_g",
+        img_size=224,
+        drop_path_rate=0,
+        use_grad_checkpoint=False,
+        vit_precision="fp16",
+        freeze_vit=True,
+        num_query_token=32,
+        t5_model="google/flan-t5-xl",
+        prompt="",
+        max_txt_len=128,
+        max_output_txt_len=256,
+        apply_lemmatizer=False,
+        num_few_shot_examples=0,
+        few_shot_prob=0,
+        qformer_text_input=True,
+    ):
+        super().__init__(
+            vit_model="eva_clip_g_video",
+            img_size=224,
+            drop_path_rate=0,
+            use_grad_checkpoint=False,
+            vit_precision="fp16",
+            freeze_vit=True,
+            num_query_token=32,
+            t5_model="google/flan-t5-xl",
+            prompt="",
+            max_txt_len=128,
+            max_output_txt_len=256,
+            apply_lemmatizer=False,
+            num_few_shot_examples=0,
+            few_shot_prob=0,
+            qformer_text_input=True,
+        )
