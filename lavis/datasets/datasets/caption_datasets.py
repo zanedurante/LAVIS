@@ -40,6 +40,30 @@ class CaptionDataset(BaseDataset, __DisplMixin):
             if img_id not in self.img_ids.keys():
                 self.img_ids[img_id] = n
                 n += 1
+        
+        self.prompts = [
+            "A short image caption: ",
+            "A short image description: ",
+            "A photo of ",
+            "An image that shows ",
+            "Write a short description of the image. ",
+            "Write a description for the photo.",
+            "Provide a description of what is presented in the photo. ",
+            "Briefly describe the content of the image. ",
+            "Can you briefly explain what you see in the image? ",
+            "Could you use a few words to describe what you perceive in the photo? ",
+            "Please provide a short depiction of the picture. ",
+            "Using language, provide a short account of the image. ",
+            "Use a few words to illustrate what is happening in the picture. ",
+        ]
+        print("Using prompts: ", self.prompts)
+        self.prompt = self.prompts[0]
+        self.prompt_idx = 0
+    
+    def _get_next_prompt(self):
+        self.prompt_idx += 1
+        self.prompt_idx = self.prompt_idx % len(self.prompts)
+        return self.prompts[self.prompt_idx]
 
     def __getitem__(self, index):
 
@@ -52,9 +76,13 @@ class CaptionDataset(BaseDataset, __DisplMixin):
         image = self.vis_processor(image)
         caption = self.text_processor(ann["caption"])
 
+        # Cycle through the prompts
+        input_text = self._get_next_prompt()
+
         return {
             "image": image,
-            "text_input": caption,
+            "text_input": input_text,
+            "text_output": caption
             # "image_id": self.img_ids[ann["image_id"]],
         }
 
@@ -74,7 +102,6 @@ class CaptionEvalDataset(BaseDataset, __DisplMixin):
 
         image_path = os.path.join(self.vis_root, ann["image"])
         image = Image.open(image_path).convert("RGB")
-
         image = self.vis_processor(image)
 
         return {
