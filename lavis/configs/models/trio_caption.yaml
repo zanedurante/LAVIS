@@ -1,0 +1,33 @@
+ # Copyright (c) 2022, salesforce.com, inc.
+ # All rights reserved.
+ # SPDX-License-Identifier: BSD-3-Clause
+ # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+
+model:
+  arch: trio_caption
+  load_finetuned: True
+
+  pretrained: "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large.pth"
+  finetuned: "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large_caption.pth"
+
+  vit_type: "large"
+  vit_grad_ckpt: True
+  vit_ckpt_layer: 5
+
+  image_size: 224
+
+  # bert config
+  med_config_path: "configs/models/med_large_config.json"
+
+
+preprocess:
+    vis_processor:
+        train:
+          name: "trio_video_train"
+        eval:
+          name: "trio_video_eval"
+    text_processor:
+        train:
+          name: "blip_caption"
+        eval:
+          name: "blip_caption"

@@ -17,6 +17,14 @@ from lavis.processors.blip_processors import (
     BlipImageEvalProcessor,
     BlipCaptionProcessor,
 )
+
+from lavis.processors.trio_processors import (
+    TrioImageTrainProcessor,
+    TrioImageEvalProcessor,
+    TrioVideoTrainProcessor,
+    TrioVideoEvalProcessor,
+)
+
 from lavis.processors.blip_diffusion_processors import (
     BlipDiffusionInputImageProcessor,
     BlipDiffusionTargetImageProcessor,

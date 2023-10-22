@@ -24,7 +24,6 @@ import torch
 from einops import rearrange, repeat
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch import einsum, nn
-from lavis.models.blip2_models.patch_dropout import PatchDropout
 from lavis.models.eva_vit import create_eva_vit_g
 
 # The names of CLIP layers (for freezing)
@@ -42,6 +41,95 @@ CLIP_INIT_LAYERS = [
     "pos_embed",
 ]
 
+
+class PatchDropout(torch.nn.Module):
+    """ 
+    Implementation modified from: https://github.com/yueliukth/PatchDropout/blob/main/scripts/patchdropout.py
+    Implements PatchDropout: https://arxiv.org/abs/2208.07220
+    Adds capability to sample tokens from tubelets (i.e. identical spatial location in consecutive frames)
+    in addition to the regular sampling from single frames.
+    """
+    def __init__(self, p=0.0, sampling="tubelet_uniform", token_shuffling=False, tokens_per_frame=196, num_frames=4):
+        super().__init__()
+        assert 0 <= p < 1, "The dropout rate p must be in [0,1)"
+        self.tokens_per_frame = tokens_per_frame
+        self.keep_rate = 1 - p
+        self.sampling = sampling
+        self.token_shuffling = token_shuffling
+        self.num_frames = num_frames
+        self.n_keep = int(self.tokens_per_frame * (1 - p)) # number of frames to keep per patch (if tubelet sampling is used)
+
+    def forward(self, x, force_drop=False):
+        """
+        If force drop is true it will drop the tokens also during inference.
+        """
+        if not self.training and not force_drop: return x        
+        if self.keep_rate == 1: return x
+
+        # batch, length, dim
+        N, L, D = x.shape
+        
+        # making cls mask (assumes that CLS is always the 1st element)
+        cls_mask = torch.zeros(N, 1, dtype=torch.int64, device=x.device)
+        # generating patch mask
+        patch_mask = self.get_mask(x)
+
+        # cat cls and patch mask
+        patch_mask = torch.hstack([cls_mask, patch_mask])
+        # gather tokens
+        x = torch.gather(x, dim=1, index=patch_mask.unsqueeze(-1).repeat(1, 1, D))
+
+        return x
+    
+    def get_mask(self, x):
+        if self.sampling == "uniform":
+            return self.uniform_mask(x)
+        elif self.sampling == "tubelet_uniform":
+            return self.tubelet_uniform_mask(x)
+        else:
+            raise NotImplementedError(f"PatchDropout does not support {self.sampling} sampling")
+            return None
+
+    def uniform_mask(self, x):
+        """
+        Returns an id-mask using uniform sampling
+        """
+        N, L, D = x.shape
+        _L = L -1 # patch lenght (without CLS)
+        
+        keep = self.n_keep
+        patch_mask = torch.rand(N, _L, device=x.device)
+        patch_mask = torch.argsort(patch_mask, dim=1) + 1
+        patch_mask = patch_mask[:, :keep]
+        if not self.token_shuffling:
+            patch_mask = patch_mask.sort(1)[0]
+        return patch_mask
+    
+    def tubelet_uniform_mask(self, x):
+        """
+        Returns an id-mask using uniform sampling
+        """
+        N, L, D = x.shape
+        if L == self.tokens_per_frame + 1: # Image input
+            return self.uniform_mask(x)
+        _L = self.tokens_per_frame # patch length (without CLS)
+        keep = self.n_keep
+        #import pdb; pdb.set_trace()
+        patch_mask = torch.rand(N, _L, device=x.device)
+        patch_mask = torch.argsort(patch_mask, dim=1) 
+        patch_mask = patch_mask[:, :keep]
+        # Repeat the same mask for all frames for mask tubelets
+        repeated_patch_mask = patch_mask.repeat(1, self.num_frames)
+        values_to_add = self.tokens_per_frame * torch.arange(0, self.num_frames).repeat_interleave(keep).to(x.device)
+
+        patch_mask = repeated_patch_mask + values_to_add 
+        patch_mask = patch_mask + 1 # add 1 to account for CLS token (assumes it is leading token)
+        
+        if not self.token_shuffling:
+            patch_mask = patch_mask.sort(1)[0]
+        else:
+            raise NotImplementedError("Token shuffling is not implemented for tubelet_uniform_mask")
+        return patch_mask
 
 def attn(q, k, v):
     sim = einsum('b i d, b j d -> b i j', q, k)
@@ -156,20 +244,81 @@ class VarAttention(nn.Module):
         x = self.proj_drop(x)
         return x
 
+class GatedTimeVarAttention(VarAttention):
+
+    def __init__(self, *args, patches_per_frame=196, patches_per_frame_after_dropout=196, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.patches_per_frame=patches_per_frame
+        self.patches_per_frame_after_dropout=patches_per_frame_after_dropout
+
+    """
+    Modifies the forward pass of the regular attention block so that the tokens pass through, unmodified when only a single frame is input
+    """
+
+    def forward(self, x, einops_from, einops_to, **einops_dims):
+        num_input_patches = x.size(1) - 1
+        if num_input_patches == self.patches_per_frame and not self.training:
+            return x
+        if num_input_patches == self.patches_per_frame_after_dropout and self.training:
+            return x
+        h = self.num_heads
+        # project x to q, k, v values
+        q, k, v = self.qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+
+        q *= self.scale
+        
+        # splice out CLS token at index 1
+        (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
+
+        # let CLS token attend to key / values of all patches across time and space
+        cls_out = attn(cls_q, k, v)
+
+        # rearrange across time or space
+        q_, k_, v_ = map(lambda t: rearrange(t, f'{einops_from} -> {einops_to}', **einops_dims), (q_, k_, v_))
+
+        # expand cls token keys and values across time or space and concat
+        r = q_.shape[0] // cls_k.shape[0]
+        cls_k, cls_v = map(lambda t: repeat(t, 'b () d -> (b r) () d', r=r), (cls_k, cls_v))
+
+        k_ = torch.cat((cls_k, k_), dim=1)
+        v_ = torch.cat((cls_v, v_), dim=1)
+
+        # attention
+        out = attn(q_, k_, v_)
+
+        # merge back time or space
+        out = rearrange(out, f'{einops_to} -> {einops_from}', **einops_dims)
+
+        # concat back the cls token
+        out = torch.cat((cls_out, out), dim=1)
+
+        # merge back the heads
+        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        ## to out
+        x = self.proj(out)
+        x = self.proj_drop(x)
+        return x
+
 
 class SpaceTimeBlock(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, time_init='zeros',
-                 attention_style='frozen-in-time'):
+                 attention_style='frozen-in-time', patches_per_frame=196, patches_per_frame_after_dropout=196):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = VarAttention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
-        self.timeattn = VarAttention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-            initialize=time_init)
+        if attention_style == 'freeze-first-frame':
+            self.timeattn = GatedTimeVarAttention(
+              dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+            initialize=time_init, patches_per_frame=patches_per_frame, patches_per_frame_after_dropout=patches_per_frame_after_dropout)
+        else:
+            self.timeattn = VarAttention(
+                dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+                initialize=time_init)
 
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -187,7 +336,7 @@ class SpaceTimeBlock(nn.Module):
         time_residual = x + time_output
         space_output = self.attn(self.norm1(time_residual), einops_from_space,
                                  einops_to_space, f=space_f)
-        if self.attention_style == 'frozen-in-time':
+        if self.attention_style == 'frozen-in-time' or self.attention_style == 'freeze-first-frame':
             space_residual = x + self.drop_path(space_output)
         else:
             raise NotImplementedError
@@ -248,11 +397,15 @@ class SpaceTimeTransformer(nn.Module):
         self.embed_dim = embed_dim
         self.patch_drop_rate = patch_drop_rate
         self.freeze_first_frame = freeze_first_frame
+        if self.freeze_first_frame:
+            self.attention_style = "freeze-first-frame"
+        else:
+            self.attention_style = attention_style
 
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         if clip:
             norm_layer = partial(nn.LayerNorm, eps=1e-5, elementwise_affine=True)
-        print("######USING ATTENTION STYLE: ", attention_style)
+        print("######USING ATTENTION STYLE: ", self.attention_style)
 
         if hybrid_backbone is not None:
             raise NotImplementedError('hybrid backbone not implemented')
@@ -260,9 +413,9 @@ class SpaceTimeTransformer(nn.Module):
             self.patch_embed = VideoPatchEmbed(
                 img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim, num_frames=num_frames)
         num_patches = self.patch_embed.num_patches
+
         self.patches_per_frame = num_patches // num_frames
         self.patches_per_frame_after_dropout = int(self.patches_per_frame * (1 - self.patch_drop_rate))
-
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(
@@ -290,7 +443,8 @@ class SpaceTimeTransformer(nn.Module):
             SpaceTimeBlock(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, time_init=time_init,
-                attention_style=attention_style, act_layer=act_layer)
+                attention_style=self.attention_style, act_layer=act_layer, patches_per_frame=self.patches_per_frame, 
+                patches_per_frame_after_dropout=self.patches_per_frame_after_dropout)
             for i in range(depth)])
         if self.freeze_first_frame:
             self.norm = norm_layer(embed_dim)
@@ -340,6 +494,19 @@ class SpaceTimeTransformer(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
+    def get_num_layer(self, var_name=""):
+        if var_name in ("cls_token", "mask_token", "pos_embed"):
+            return 0
+        elif var_name.startswith("patch_embed"):
+            return 0
+        elif var_name.startswith("rel_pos_bias"):
+            return len(self.blocks) - 1
+        elif var_name.startswith("blocks"):
+            layer_id = int(var_name.split('.')[1])
+            return layer_id + 1
+        else:
+            return len(self.blocks)
+    
     def get_classifier(self):
         return self.head
 
@@ -348,7 +515,6 @@ class SpaceTimeTransformer(nn.Module):
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
-        #import pdb; pdb.set_trace()
         b, num_frames, channels, _, _ = x.shape # b 101
         x = self.patch_embed(x)
         x = x.flatten(2).transpose(2, 1)
@@ -357,12 +523,12 @@ class SpaceTimeTransformer(nn.Module):
         BF = x.shape[0]
         cls_tokens = self.cls_token.expand(BF, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
+
         # positional embed needs to be tiled for each frame (this does [1,2,3] --> [1,2,3,1,2,3]...)
         cls_embed = self.pos_embed[:, 0, :].unsqueeze(1)
         tile_pos_embed = self.pos_embed[:, 1:, :].repeat(1, self.num_frames, 1)
         # temporal embed needs to be repeated within each frame (this does [1,2,3] --> [1,1,1,2,2,2,3,3,3]...)
         if self.freeze_first_frame:
-            
             temporal_embed = torch.cat([self.first_frame_temporal_embed, self.temporal_embed], dim=1)
         else:
             temporal_embed = self.temporal_embed
@@ -378,13 +544,13 @@ class SpaceTimeTransformer(nn.Module):
             n = self.patches_per_frame_after_dropout # account for patch dropout
         else:
             n = self.patches_per_frame # use all patches at inference
+
         f = num_frames
         #import pdb; pdb.set_trace()
         for blk in self.blocks:
             x = blk(x, self.einops_from_space, self.einops_to_space, self.einops_from_time,
                     self.einops_to_time,
                     time_n=n, space_f=f)
-        #import pdb; pdb.set_trace()
 
         #x = self.norm(x)[:, 0]
         #x = self.pre_logits(x)
@@ -392,8 +558,10 @@ class SpaceTimeTransformer(nn.Module):
         return x
 
     def forward(self, x):
+        # convert image to video format before sending in
+        if len(x.shape) == 4:
+            x = x.unsqueeze(1) # convert b, c, h, w --> b, 1, c, h, w (t=1 here)
         x = self.forward_features(x)
-        #x = self.head(x)
         return x
 
 
