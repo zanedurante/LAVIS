@@ -27,3 +27,4 @@ tqdm
 transformers==4.25
 webdataset
 wheel
+wandb

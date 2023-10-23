@@ -45,6 +45,9 @@ run:
   seed: 42
   output_dir: "output/Trio/Caption_webvid"
 
+  # logging
+  log: wandb
+
   amp: False
   resume_ckpt_path: null
 

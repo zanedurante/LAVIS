@@ -154,3 +154,6 @@ debug*/
 *.gz
 
 cache/
+
+# key files for login info (e.g. wandb)
+*.key

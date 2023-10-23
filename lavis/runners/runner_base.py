@@ -61,6 +61,7 @@ class RunnerBase:
         self._lr_sched = None
 
         self.start_epoch = 0
+        self.log = cfg.get_config()["run"].get("log", "stdout") # defaults to stdout
 
         # self.setup_seeds()
         self.setup_output_dir()
@@ -435,6 +436,7 @@ class RunnerBase:
             cuda_enabled=self.cuda_enabled,
             log_freq=self.log_freq,
             accum_grad_iters=self.accum_grad_iters,
+            logger=self.log,
         )
 
     @torch.no_grad()

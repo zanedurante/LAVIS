@@ -12,6 +12,7 @@ import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import wandb
 
 import lavis.tasks as tasks
 from lavis.common.config import Config
@@ -86,6 +87,14 @@ def main():
 
     # set after init_distributed_mode() to only log on master.
     setup_logger()
+    if get_rank() == 0 and cfg.get_config()['run'].get("log", "stdout") == "wandb":
+        print("Logging to wandb!")
+        # Assume key is stored in LAVIS/wandb.key
+        key = open("wandb.key").read().strip()
+        wandb.login(key=key, force=True)
+        # TODO: Create name generation function
+        name = job_id
+        wandb.init(project="video-image-llm", name=name, config=cfg)
 
     cfg.pretty_print()
 

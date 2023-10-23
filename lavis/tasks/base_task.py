@@ -14,6 +14,7 @@ from lavis.common.dist_utils import get_rank, get_world_size, is_main_process, i
 from lavis.common.logger import MetricLogger, SmoothedValue
 from lavis.common.registry import registry
 from lavis.datasets.data_utils import prepare_sample
+import wandb
 
 class BaseTask:
     def __init__(self, **kwargs):
@@ -118,6 +119,7 @@ class BaseTask:
         cuda_enabled=False,
         log_freq=50,
         accum_grad_iters=1,
+        logger="stdout",
     ):
         return self._train_inner_loop(
             epoch=epoch,
@@ -130,6 +132,7 @@ class BaseTask:
             log_freq=log_freq,
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
+            logger=logger,
         )
 
     def train_iters(
@@ -145,6 +148,7 @@ class BaseTask:
         cuda_enabled=False,
         log_freq=50,
         accum_grad_iters=1,
+        logger="stdout",
     ):
         return self._train_inner_loop(
             epoch=epoch,
@@ -158,6 +162,7 @@ class BaseTask:
             log_freq=log_freq,
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
+            logger=logger,
         )
 
     def _train_inner_loop(
@@ -173,6 +178,7 @@ class BaseTask:
         log_freq=50,
         cuda_enabled=False,
         accum_grad_iters=1,
+        logger="stdout",
     ):
         """
         An inner training loop compatible with both epoch-based and iter-based training.
@@ -242,6 +248,8 @@ class BaseTask:
                     optimizer.step()
                 optimizer.zero_grad()
 
+            if is_main_process() and logger == "wandb":
+                wandb.log(loss_dict)
             metric_logger.update(**loss_dict)
             metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
@@ -249,10 +257,16 @@ class BaseTask:
         # gather the stats from all processes
         metric_logger.synchronize_between_processes()
         logging.info("Averaged stats: " + str(metric_logger.global_avg()))
-        return {
+
+        log_dict = {
             k: "{:.3f}".format(meter.global_avg)
             for k, meter in metric_logger.meters.items()
         }
+
+        if is_main_process() and logger == "wandb":
+            wandb.log(log_dict)
+
+        return log_dict 
 
     @staticmethod
     def save_result(result, result_dir, filename, remove_duplicate=""):
