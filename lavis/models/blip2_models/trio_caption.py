@@ -120,8 +120,14 @@ class TrioT5(Blip2Base):
         # print(samples["text_input"])
         # print(samples["text_output"])
         # print('-----------------')
-
-        image = samples["image"]
+        
+        # allow for image or video input
+        if "image" in samples.keys():
+            image = samples["image"]
+        elif "video" in samples.keys():
+            image = samples["video"]
+        else:
+            raise ValueError("No image or video input found in input dict.")
         with self.maybe_autocast():
             image_embeds = self.ln_vision(self.visual_encoder(image))
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
@@ -736,7 +742,7 @@ class TrioT5(Blip2Base):
 
     @classmethod
     def from_config(cls, cfg):
-        vit_model = cfg.get("vit_model", "eva_clip_g")
+        vit_model = cfg.get("vit_model", "eva_clip_g_video")
         img_size = cfg.get("image_size")
         num_query_token = cfg.get("num_query_token")
         t5_model = cfg.get("t5_model")

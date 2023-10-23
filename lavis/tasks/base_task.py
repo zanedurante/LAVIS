@@ -15,7 +15,6 @@ from lavis.common.logger import MetricLogger, SmoothedValue
 from lavis.common.registry import registry
 from lavis.datasets.data_utils import prepare_sample
 
-
 class BaseTask:
     def __init__(self, **kwargs):
         super().__init__()
@@ -69,7 +68,12 @@ class BaseTask:
         return output["loss"], loss_dict
 
     def valid_step(self, model, samples):
-        raise NotImplementedError
+        output = model(samples)
+        loss_dict = {}
+        for k,v in output.items():
+            if "loss" in k:
+                loss_dict[k] = v
+        return output["loss"], loss_dict
     
     def before_training(self, model, dataset, **kwargs):
         model.before_training(dataset=dataset, task_type=type(self))
@@ -81,7 +85,8 @@ class BaseTask:
         pass
 
     def inference_step(self):
-        raise NotImplementedError
+        output = model(samples)
+        return output
 
     def evaluation(self, model, data_loader, cuda_enabled=True):
         metric_logger = MetricLogger(delimiter="  ")
