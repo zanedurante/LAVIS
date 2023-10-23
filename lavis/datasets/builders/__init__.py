@@ -11,6 +11,7 @@ from lavis.datasets.builders.caption_builder import (
     MSRVTTCapBuilder,
     MSVDCapBuilder,
     VATEXCapBuilder,
+    WebVidCapBuilder,
 )
 from lavis.datasets.builders.image_text_pair_builder import (
     ConceptualCaption12MBuilder,
@@ -36,6 +37,7 @@ from lavis.datasets.builders.retrieval_builder import (
     COCORetrievalBuilder,
     Flickr30kBuilder,
 )
+
 from lavis.datasets.builders.dialogue_builder import AVSDDialBuilder
 from lavis.datasets.builders.text_to_image_generation_builder import BlipDiffusionFinetuneBuilder
 
@@ -65,6 +67,7 @@ __all__ = [
     "VGCaptionBuilder",
     "VGVQABuilder",
     "AVSDDialBuilder",
+    "WebVidCapBuilder"
 ]
 
 

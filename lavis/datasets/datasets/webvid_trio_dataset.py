@@ -1,0 +1,95 @@
+"""
+ Copyright (c) 2022, salesforce.com, inc.
+ All rights reserved.
+ SPDX-License-Identifier: BSD-3-Clause
+ For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
+"""
+
+import os
+from lavis.datasets.datasets.base_dataset import BaseDataset
+
+from lavis.datasets.datasets.caption_datasets import CaptionDataset
+from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionDataset, TrioVideoCaptionEvalDataset
+import decord
+import pandas as pd
+
+decord.bridge.set_bridge('torch')
+
+def make_trio_csv_from_original(original_path, trio_path, data_dir="/mnt/datasets_mnt/webvid10m"): 
+    # Here data_dir is the root directory of the webvid dataset
+    df = pd.read_csv(original_path)
+    captions = df["name"].tolist()
+    page_dirs = df["page_dir"].tolist()
+    video_ids = df["videoid"].tolist()
+    # Create a new dataframe with the right format
+    def _get_video_path(sample):
+        rel_video_fp = os.path.join(sample['page_dir'], str(sample['videoid']) + '.mp4')
+        full_video_fp = os.path.join(data_dir, 'videos', rel_video_fp)
+        return full_video_fp
+    video_paths = [_get_video_path({"page_dir":page_dir, "videoid":video_id}) for page_dir, video_id in zip(page_dirs, video_ids)]
+    new_df = pd.DataFrame({"video":video_paths, "caption":captions})
+    print("Saving new CSV file in trio format to:", trio_path)
+    new_df.to_csv(trio_path, index=False)
+    return
+
+
+
+class WebVidCaptionDataset(TrioVideoCaptionDataset):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+        """
+        TrioVideoCaptionDataset structure supports fixed FPS and random frame sampling during training through an interface.
+        Use num_skip_frames to set the number of frames to skip for fixed FPS sampling. If None, assumes random frame sampling.
+        total_num_frames is the total number of frames to sample from a video for each clip during training. This is equivalent to the number of frames in a video during inference.
+        For _load_annotations, you need to either load a CSV file or create a pd.DataFrame with the following structure:
+            video, caption, start_frame (optional), end_frame (optional)
+        split (string): val or test
+        """
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
+
+    def _load_metadata(self):
+        """
+        Load metadata from a CSV file or generate pd.DataFrame.  Resulting pandas dataframe should have structure:
+            video, caption, start_frame (optional), end_frame (optional)
+        """
+        root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
+        orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/results_10M_train.csv"
+        converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/WebVid_10M_train_trio_format.csv"
+
+        # Create a new CSV file in the trio format if it doesn't exist
+        # Format: "video", "caption", "start_frame", "end_frame", for webvid the last two are 0 and -1 (defaults) so we can ignore them
+        if not os.path.exists(converted_csv_path):
+            print("Converting original CSV file to trio format...")
+            make_trio_csv_from_original(orig_csv_path, converted_csv_path, root_dataset_path)
+
+        self.metadata = pd.read_csv(converted_csv_path)
+        return
+
+
+class WebVidCaptionEvalDataset(TrioVideoCaptionEvalDataset):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+        """
+        vis_root (string): Root directory of images (e.g. coco/images/)
+        ann_root (string): directory to store the annotation file
+        split (string): val or test
+        """
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames) # Note, we keep vis_processor here for compatibility with the original code
+        # We use a custome visual processor here that supports FPS sampling + video transforms
+
+
+    def _load_metadata(self):
+        """
+        Load metadata from a CSV file or generate pd.DataFrame.  Resulting pandas dataframe should have structure:
+            video, caption, start_frame (optional), end_frame (optional)
+        """
+        root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
+        orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/results_10M_val.csv"
+        converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/WebVid_10M_val_trio_format.csv"
+
+        # Create a new CSV file in the trio format if it doesn't exist
+        # Format: "video", "caption", "start_frame", "end_frame", for webvid the last two are 0 and -1 (defaults) so we can ignore them
+        if not os.path.exists(converted_csv_path):
+            print("Converting original CSV file to trio format...")
+            make_trio_csv_from_original(orig_csv_path, converted_csv_path, root_dataset_path)
+
+        self.metadata = pd.read_csv(converted_csv_path)
+        return

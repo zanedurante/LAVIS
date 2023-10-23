@@ -11,6 +11,9 @@ model:
 
 datasets:
   webvid_caption: # name of the dataset builder
+    data_type: videos
+    total_num_frames: 4
+    num_skip_frames: -1
     vis_processor:
         train:
           name: "trio_video_train"
@@ -23,7 +26,7 @@ datasets:
           name: "blip_caption"
 
 run:
-  task: captioning
+  task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
   init_lr: 2e-6
@@ -34,6 +37,7 @@ run:
   batch_size_eval: 64
   num_workers: 4
 
+  # Currently unused args, used for evaluation
   max_len: 20
   min_len: 5
   num_beams: 3
