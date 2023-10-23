@@ -116,6 +116,8 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             print("Error loading video: {}".format(video_path))
             imgs = Image.new('RGB', (224, 224), (0, 0, 0))
             imgs = transforms.ToTensor()(imgs).unsqueeze(0)
+            # Repeat self.total_num_frames times in first dim
+            imgs = imgs.repeat(self.total_num_frames, 1, 1, 1)
             return imgs
         video_length = len(video_reader)
 
