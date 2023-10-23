@@ -14,6 +14,8 @@ import decord
 import numpy as np
 from abc import abstractmethod
 from torchvision import transforms
+from PIL import Image
+
 
 decord.bridge.set_bridge('torch')
 
@@ -108,7 +110,13 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
 
     def _load_video(self, video_path, start_frame=0, end_frame=-1):
         frame_indices = None
-        video_reader = decord.VideoReader(video_path, num_threads=1)
+        try:
+            video_reader = decord.VideoReader(video_path, num_threads=1)
+        except:
+            print("Error loading video: {}".format(video_path))
+            imgs = Image.new('RGB', (224, 224), (0, 0, 0))
+            imgs = transforms.ToTensor()(imgs).unsqueeze(0)
+            return imgs
         video_length = len(video_reader)
 
         if self.num_skip_frames < 0: # Use random frame sampling
@@ -118,7 +126,6 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             # TODO: Implement variable/random offsets for fixed FPS sampling
             frame_indices = np.arange(start_frame, end_frame, self.num_skip_frames + 1)[:self.total_num_frames]
 
-        print(frame_indices)
         frames = video_reader.get_batch(frame_indices)
         frames = frames.float() / 255
         frames = frames.permute(0, 3, 1, 2)
