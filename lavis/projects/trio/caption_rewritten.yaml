@@ -10,7 +10,7 @@ model:
   load_finetuned: False
 
 datasets:
-  webvid_caption: # name of the dataset builder
+  rewritten_caption: # name of the dataset builder
     data_type: videos
     total_num_frames: 4
     num_skip_frames: -1
@@ -43,7 +43,7 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "output/Trio/Caption_webvid"
+  output_dir: "output/Trio/Caption_rewritten"
 
   # logging
   log: wandb

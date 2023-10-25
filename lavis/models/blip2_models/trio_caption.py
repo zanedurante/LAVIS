@@ -19,6 +19,9 @@ from lavis.models.blip2_models.blip2 import Blip2Base, disabled_train
 from lavis.models.blip2_models.modeling_t5 import T5Config, T5ForConditionalGeneration
 from transformers.modeling_outputs import BaseModelOutput
 
+# TODO: Allow for better fp16 support since the model is frozen. Right now fp32 is used for the model.
+# https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
+
 
 @registry.register_model("trio_t5")
 class TrioT5(Blip2Base):
@@ -97,7 +100,7 @@ class TrioT5(Blip2Base):
 
         for name, param in self.t5_model.named_parameters():
             param.requires_grad = False
-            param.data = param.data.bfloat16()
+            param.data = param.data.float()
 
         self.t5_proj = nn.Linear(
             self.Qformer.config.hidden_size, self.t5_model.config.hidden_size
@@ -122,6 +125,7 @@ class TrioT5(Blip2Base):
         # print('-----------------')
         
         # allow for image or video input
+        import pdb; pdb.set_trace()
         if "image" in samples.keys():
             image = samples["image"]
         elif "video" in samples.keys():
@@ -167,7 +171,7 @@ class TrioT5(Blip2Base):
         if self.few_shot_prob > 0 and "few_shot_samples" in samples.keys():
             fs_embeds, fs_atts = self.prepare_few_shot_embeds(samples['few_shot_samples'])
 
-        with self.maybe_autocast(dtype=torch.bfloat16):
+        with self.maybe_autocast(dtype=torch.float32):
             input_tokens = self.t5_tokenizer(
                 samples["text_input"],
                 padding="longest",
@@ -262,7 +266,7 @@ class TrioT5(Blip2Base):
         inputs_t5 = self.t5_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
         atts_t5 = torch.ones(inputs_t5.size()[:-1], dtype=torch.long).to(image.device)
 
-        with self.maybe_autocast(dtype=torch.bfloat16):
+        with self.maybe_autocast(dtype=torch.float32):
             input_tokens = self.t5_tokenizer(
                 text_input,
                 padding="longest",
@@ -397,7 +401,7 @@ class TrioT5(Blip2Base):
 
         encoder_atts = torch.cat([atts_t5, input_tokens.attention_mask], dim=1)
 
-        with self.maybe_autocast(dtype=torch.bfloat16):
+        with self.maybe_autocast(dtype=torch.float32):
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
             inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
 
@@ -633,7 +637,7 @@ class TrioT5(Blip2Base):
 
         n_cands = len(candidates)
 
-        with self.maybe_autocast(dtype=torch.bfloat16):
+        with self.maybe_autocast(dtype=torch.float32):
             inputs_embeds = self.t5_model.encoder.embed_tokens(input_tokens.input_ids)
             inputs_embeds = torch.cat([inputs_t5, inputs_embeds], dim=1)
 

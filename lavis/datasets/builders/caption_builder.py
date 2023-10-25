@@ -17,6 +17,11 @@ from lavis.datasets.datasets.webvid_trio_dataset import (
     WebVidCaptionEvalDataset,
 )
 
+from lavis.datasets.datasets.rewritten_trio_dataset import (
+    RewrittenCaptionDataset,
+    RewrittenCaptionEvalDataset,
+)
+
 from lavis.common.registry import registry
 from lavis.datasets.datasets.video_caption_datasets import (
     VideoCaptionDataset,
@@ -69,7 +74,17 @@ class WebVidCapBuilder(BaseDatasetBuilder):
             )
 
         return datasets
-        
+
+@registry.register_builder("rewritten_caption")
+class RewrittenCapBuilder(WebVidCapBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = RewrittenCaptionDataset
+        self.eval_dataset_cls = RewrittenCaptionEvalDataset
+    
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/webvid/rewritten_cap.yaml",
+    }        
 
 @registry.register_builder("coco_caption")
 class COCOCapBuilder(BaseDatasetBuilder):

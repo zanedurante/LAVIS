@@ -94,7 +94,7 @@ def main():
         wandb.login(key=key, force=True)
         # TODO: Create name generation function
         name = job_id
-        wandb.init(project="video-image-llm", name=name, config=cfg)
+        wandb.init(project="video-image-llm", config=cfg)
 
     cfg.pretty_print()
 
