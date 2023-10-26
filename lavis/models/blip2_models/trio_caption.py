@@ -125,7 +125,7 @@ class TrioT5(Blip2Base):
         # print('-----------------')
         
         # allow for image or video input
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if "image" in samples.keys():
             image = samples["image"]
         elif "video" in samples.keys():

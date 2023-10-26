@@ -149,7 +149,7 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
         caption = self.text_processor(ann["caption"])
 
         input_text = self._get_next_prompt() # Inherited from CaptionDataset
-
+        # print('video: ', video.shape)
         # "image_id" is kept to stay compatible with the COCO evaluation format
         return {
             "video": video,

@@ -17,6 +17,10 @@ from lavis.datasets.datasets.webvid_trio_dataset import (
     WebVidCaptionEvalDataset,
 )
 
+from lavis.datasets.datasets.minecraft_dataset import (
+    MinecraftVidDataset
+)
+
 from lavis.datasets.datasets.rewritten_trio_dataset import (
     RewrittenCaptionDataset,
     RewrittenCaptionEvalDataset,
@@ -27,6 +31,54 @@ from lavis.datasets.datasets.video_caption_datasets import (
     VideoCaptionDataset,
     VideoCaptionEvalDataset,
 )
+
+
+@registry.register_builder("minecraft")
+class MinecraftBuilder(BaseDatasetBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = MinecraftVidDataset
+        self.eval_dataset_cls = MinecraftVidDataset
+
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/minecraft/defaults_action.yaml", 
+    }
+
+    def build_datasets(self, cfg=None):
+        print("Assuming minecraft dataset is already stored -- skipping build!!")
+        datasets = {"train": None, "eval": None}
+
+        self.build_processors()
+
+        num_frames = self.config.get("total_num_frames", 4)
+        num_skip_frames = self.config.get("num_skip_frames", 4)
+
+
+
+        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+            is_train = split == "train"
+            vis_processor = (
+                self.vis_processors["train"]
+                if is_train
+                else self.vis_processors["eval"]
+            )
+            text_processor = (
+                self.text_processors["train"]
+                if is_train
+                else self.text_processors["eval"]
+            )
+            ann_paths = None # Not used for TrioVideo datasets 
+            vis_root = None # Not used for TrioVideo datasets
+            datasets[split] = dataset_cls(
+                        vis_processor=vis_processor,
+                        text_processor=text_processor,
+                        ann_paths=ann_paths,
+                        vis_root=vis_root,
+                        num_skip_frames=num_skip_frames,
+                        total_num_frames=num_frames,
+            )
+
+        return datasets
 
 @registry.register_builder("webvid_caption")
 class WebVidCapBuilder(BaseDatasetBuilder):
