@@ -25,6 +25,7 @@ from einops import rearrange, repeat
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch import einsum, nn
 from lavis.models.eva_vit import create_eva_vit_g
+import timm
 
 # The names of CLIP layers (for freezing)
 CLIP_INIT_LAYERS = [
@@ -49,7 +50,7 @@ class PatchDropout(torch.nn.Module):
     Adds capability to sample tokens from tubelets (i.e. identical spatial location in consecutive frames)
     in addition to the regular sampling from single frames.
     """
-    def __init__(self, p=0.0, sampling="tubelet_uniform", token_shuffling=False, tokens_per_frame=196, num_frames=4):
+    def __init__(self, p=0.0, sampling="tubelet_uniform", token_shuffling=False, tokens_per_frame=196, num_frames=4, training=True):
         super().__init__()
         assert 0 <= p < 1, "The dropout rate p must be in [0,1)"
         self.tokens_per_frame = tokens_per_frame
@@ -58,11 +59,13 @@ class PatchDropout(torch.nn.Module):
         self.token_shuffling = token_shuffling
         self.num_frames = num_frames
         self.n_keep = int(self.tokens_per_frame * (1 - p)) # number of frames to keep per patch (if tubelet sampling is used)
+        self.training = training
 
     def forward(self, x, force_drop=False):
         """
         If force drop is true it will drop the tokens also during inference.
         """
+        # import pdb; pdb.set_trace()
         if not self.training and not force_drop: return x        
         if self.keep_rate == 1: return x
 
@@ -72,14 +75,14 @@ class PatchDropout(torch.nn.Module):
         # making cls mask (assumes that CLS is always the 1st element)
         cls_mask = torch.zeros(N, 1, dtype=torch.int64, device=x.device)
         # generating patch mask
-        patch_mask = self.get_mask(x)
+        patch_mask, restore_mask = self.get_mask(x)
 
         # cat cls and patch mask
         patch_mask = torch.hstack([cls_mask, patch_mask])
         # gather tokens
         x = torch.gather(x, dim=1, index=patch_mask.unsqueeze(-1).repeat(1, 1, D))
 
-        return x
+        return x, restore_mask
     
     def get_mask(self, x):
         if self.sampling == "uniform":
@@ -103,6 +106,7 @@ class PatchDropout(torch.nn.Module):
         patch_mask = patch_mask[:, :keep]
         if not self.token_shuffling:
             patch_mask = patch_mask.sort(1)[0]
+        
         return patch_mask
     
     def tubelet_uniform_mask(self, x):
@@ -114,22 +118,29 @@ class PatchDropout(torch.nn.Module):
             return self.uniform_mask(x)
         _L = self.tokens_per_frame # patch length (without CLS)
         keep = self.n_keep
-        #import pdb; pdb.set_trace()
-        patch_mask = torch.rand(N, _L, device=x.device)
-        patch_mask = torch.argsort(patch_mask, dim=1) 
-        patch_mask = patch_mask[:, :keep]
+        
+        noise = torch.rand(N, _L, device=x.device)
+        ids_shuffle = torch.argsort(noise, dim=1) 
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        patch_mask = ids_shuffle[:, :keep]
         # Repeat the same mask for all frames for mask tubelets
         repeated_patch_mask = patch_mask.repeat(1, self.num_frames)
+        repeated_restore_mask = ids_restore.repeat(1, self.num_frames)
         values_to_add = self.tokens_per_frame * torch.arange(0, self.num_frames).repeat_interleave(keep).to(x.device)
 
         patch_mask = repeated_patch_mask + values_to_add 
         patch_mask = patch_mask + 1 # add 1 to account for CLS token (assumes it is leading token)
         
+        restore_mask = repeated_restore_mask + 1 # add 1 to account for CLS token (assumes it is leading token)
+
         if not self.token_shuffling:
             patch_mask = patch_mask.sort(1)[0]
+            restore_mask = restore_mask.sort(1)[0]
         else:
             raise NotImplementedError("Token shuffling is not implemented for tubelet_uniform_mask")
-        return patch_mask
+        
+        return patch_mask, restore_mask
 
 def attn(q, k, v):
     sim = einsum('b i d, b j d -> b i j', q, k)
@@ -211,7 +222,7 @@ class VarAttention(nn.Module):
         q, k, v = self.qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
-        q *= self.scale
+        q = q * self.scale
 
         # splice out CLS token at index 1
         (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
@@ -256,6 +267,7 @@ class GatedTimeVarAttention(VarAttention):
     """
 
     def forward(self, x, einops_from, einops_to, **einops_dims):
+        # import pdb; pdb.set_trace()
         num_input_patches = x.size(1) - 1
         if num_input_patches == self.patches_per_frame and not self.training:
             return x
@@ -266,7 +278,7 @@ class GatedTimeVarAttention(VarAttention):
         q, k, v = self.qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
-        q *= self.scale
+        q = q * self.scale
         
         # splice out CLS token at index 1
         (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
@@ -363,7 +375,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.0,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.75,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -428,7 +440,7 @@ class SpaceTimeTransformer(nn.Module):
             self.temporal_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
 
         self.pos_drop = PatchDropout(p=patch_drop_rate, sampling='tubelet_uniform', tokens_per_frame=self.patches_per_frame, num_frames=num_frames)
-
+        
         if clip:
             self.norm_pre = norm_layer(embed_dim)
             act_layer = QuickGELU
@@ -538,7 +550,7 @@ class SpaceTimeTransformer(nn.Module):
 
         curr_patches = x.shape[1]
         x = x + total_pos_embed[:, :curr_patches]
-        x = self.pos_drop(x)
+        x, restore_mask = self.pos_drop(x)
         x = self.norm_pre(x)
         if self.training:
             n = self.patches_per_frame_after_dropout # account for patch dropout
@@ -555,17 +567,73 @@ class SpaceTimeTransformer(nn.Module):
         #x = self.norm(x)[:, 0]
         #x = self.pre_logits(x)
 
-        return x
+        return x, restore_mask
 
     def forward(self, x):
         # convert image to video format before sending in
         if len(x.shape) == 4:
             x = x.unsqueeze(1) # convert b, c, h, w --> b, 1, c, h, w (t=1 here)
-        x = self.forward_features(x)
-        return x
+        x, restore_mask = self.forward_features(x)
+        return x, restore_mask
 
 
-def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,precision="fp16",    num_frames = 4
+def create_vit_b_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,precision="fp16",    num_frames = 4):
+    model = SpaceTimeTransformer(
+        img_size=img_size,
+        num_frames=num_frames,
+        time_init='zeros',
+        freeze_first_frame=False,
+        clip=True,
+    )
+    model.head = nn.Identity()
+    model.pre_logits = nn.Identity()
+    ftr_dim = model.embed_dim
+    # init with weights from eva_vit_g
+    vit_model = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
+
+    vit_checkpoint = vit_model.state_dict()
+    ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
+
+    nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
+    for block in model.blocks:
+        nn.init.ones_(block.norm3.weight)
+        nn.init.zeros_(block.norm3.bias)
+    
+    print("ckpts_vals:", ckpt_vals)
+    # ckpts_vals: _IncompatibleKeys(missing_keys=['temporal_embed', 'patch_embed.proj.bias', 'blocks.0.timeattn.qkv.weight', 'blocks.0.timeattn.qkv.bias', 'blocks.0.timeattn.proj.weight', 'blocks.0.timeattn.proj.bias', 'blocks.0.norm3.weight', 'blocks.0.norm3.bias', 'blocks.1.timeattn.qkv.weight', 'blocks.1.timeattn.qkv.bias', 'blocks.1.timeattn.proj.weight', 'blocks.1.timeattn.proj.bias', 'blocks.1.norm3.weight', 'blocks.1.norm3.bias', 'blocks.2.timeattn.qkv.weight', 'blocks.2.timeattn.qkv.bias', 'blocks.2.timeattn.proj.weight', 'blocks.2.timeattn.proj.bias', 'blocks.2.norm3.weight', 'blocks.2.norm3.bias', 'blocks.3.timeattn.qkv.weight', 'blocks.3.timeattn.qkv.bias', 'blocks.3.timeattn.proj.weight', 'blocks.3.timeattn.proj.bias', 'blocks.3.norm3.weight', 'blocks.3.norm3.bias', 'blocks.4.timeattn.qkv.weight', 'blocks.4.timeattn.qkv.bias', 'blocks.4.timeattn.proj.weight', 'blocks.4.timeattn.proj.bias', 'blocks.4.norm3.weight', 'blocks.4.norm3.bias', 'blocks.5.timeattn.qkv.weight', 'blocks.5.timeattn.qkv.bias', 'blocks.5.timeattn.proj.weight', 'blocks.5.timeattn.proj.bias', 'blocks.5.norm3.weight', 'blocks.5.norm3.bias', 'blocks.6.timeattn.qkv.weight', 'blocks.6.timeattn.qkv.bias', 'blocks.6.timeattn.proj.weight', 'blocks.6.timeattn.proj.bias', 'blocks.6.norm3.weight', 'blocks.6.norm3.bias', 'blocks.7.timeattn.qkv.weight', 'blocks.7.timeattn.qkv.bias', 'blocks.7.timeattn.proj.weight', 'blocks.7.timeattn.proj.bias', 'blocks.7.norm3.weight', 'blocks.7.norm3.bias', 'blocks.8.timeattn.qkv.weight', 'blocks.8.timeattn.qkv.bias', 'blocks.8.timeattn.proj.weight', 'blocks.8.timeattn.proj.bias', 'blocks.8.norm3.weight', 'blocks.8.norm3.bias', 'blocks.9.timeattn.qkv.weight', 'blocks.9.timeattn.qkv.bias', 'blocks.9.timeattn.proj.weight', 'blocks.9.timeattn.proj.bias', 'blocks.9.norm3.weight', 'blocks.9.norm3.bias', 'blocks.10.timeattn.qkv.weight', 'blocks.10.timeattn.qkv.bias', 'blocks.10.timeattn.proj.weight', 'blocks.10.timeattn.proj.bias', 'blocks.10.norm3.weight', 'blocks.10.norm3.bias', 'blocks.11.timeattn.qkv.weight', 'blocks.11.timeattn.qkv.bias', 'blocks.11.timeattn.proj.weight', 'blocks.11.timeattn.proj.bias', 'blocks.11.norm3.weight', 'blocks.11.norm3.bias'], unexpected_keys=['head.weight', 'head.bias'])
+
+    # import pdb; pdb.set_trace()
+
+    # model.pos_embed.requires_grad = False
+    # model.cls_token.requires_grad = False
+    # for name, layer in model.named_children():
+    #     if name == "blocks":
+    #         for block in layer:
+    #             for b_name, b_layer in block.named_children():
+    #                 if b_name in CLIP_INIT_LAYERS:
+    #                     for p in b_layer.parameters():
+    #                         p.requires_grad = False
+    #     elif name in CLIP_INIT_LAYERS:
+    #         print(f"Freezing {name}")
+    #         for p in layer.parameters():
+    #             p.requires_grad = False
+    #     else:
+    #         print(f"Skipping {name} for freezing")
+    model.fc = nn.Identity()
+    #model.vid_proj = nn.Linear()
+    #with torch.no_grad():
+    model.image_proj = nn.Linear(768, 512) # CLIP Vision to CLIP text embed space
+    model.vid_proj.weight.copy_(vit_checkpoint['head.weight'])
+    model.vid_proj.bias.copy_(vit_checkpoint['head.bias']) #Load contrastive projection layer from 'head.weight', 'head.bias'
+    
+    # use checkpoint
+    if use_checkpoint:
+        print("Loading checkpoints is not yet supported!")
+        raise NotImplementedError
+
+    return model
+
+def create_eva_vit_g_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,precision="fp16",    num_frames = 4
 ):
     #import pdb; pdb.set_trace()
     # TODO: Choose better number of frames
@@ -595,6 +663,7 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,
         use_checkpoint=use_checkpoint,
         precision=precision,
     ) # load from eva_vit_g
+     # TODO: Update with timm model for clip vit b32
 
     vit_checkpoint = vit_model.state_dict()
     ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)

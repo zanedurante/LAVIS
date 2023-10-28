@@ -23,7 +23,7 @@ from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 from lavis.models.eva_vit import create_eva_vit_g
 from lavis.models.clip_vit import create_clip_vit_L
-from lavis.models.video_models import create_eva_vit_g_video
+from lavis.models.video_models import create_eva_vit_g_video, create_vit_b_video
 from transformers import BertTokenizer
 
 
@@ -71,7 +71,12 @@ class Blip2Base(BaseModel):
             "eva_clip_g_video",
             "eva2_clip_L_video",
             "clip_L",
+            "clip_b"
         ], "vit model must be eva_clip_g, eva2_clip_L or clip_L (_video)"
+
+        # import pdb; pdb.set_trace()
+        if model_name == "clip_b":
+            visual_encoder = create_vit_b_video(img_size, drop_path_rate, use_grad_checkpoint, precision)
         if model_name == "eva_clip_g":
             visual_encoder = create_eva_vit_g(
                 img_size, drop_path_rate, use_grad_checkpoint, precision

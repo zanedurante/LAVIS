@@ -82,9 +82,9 @@ def convert_to_text(action_dict):
     for key, value in action_dict.items():
         # Handling the "camera" key separately.
         if key == "camera":
-                continue
                 if any(value != 0):
-                    non_zero_actions.append(f"{key}: {np.array2string(value, separator=',')}")
+                    non_zero_actions.append('[mouse dx:' + str(value[0]) + ', mouse dy:' + str(value[1]) + ']')
+
         else:
             # Add the key to the list if the value is non-zero.
             if value != 0:
@@ -176,6 +176,7 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
         # use_fixed_start=True means we use the start time of the segment as the start time of the video
         # super().__init__(*args, **kwargs)
          super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
+         self.total_num_frames = total_num_frames
         
 
     def _load_metadata(self):
@@ -195,7 +196,7 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
 
         # chunk_size_seconds = 0.5
         # fps = 20  # assuming 20FPS
-        chuck_size_frames = 20
+        chuck_size_frames = self.total_num_frames
 
         for video_file, metadata_file in zip(self.video_files, self.metadata_files):
             video_path = os.path.join(self.metadata_dir, video_file)
@@ -269,17 +270,30 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
                 
                 
                 all_actions = []
-                for action in data["actions"][-1]:
+                captions = ""
+                for idx , action in enumerate(data["actions"][-1]):
                     text_actions = convert_to_text(action)
-                    all_actions.extend(text_actions)
+                    if text_actions:
+                        captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
+                    else:
+                        captions += f"frame {idx}:  No action\n" 
+
+                if captions:
+                    data["caption"].append(captions)
+                else:
+                    data["caption"].append("No action in the video")
+                    
                 # print('all actions: ', all_actions)
                 
-                if all_actions:
-                    text_action = top_k_common_items(all_actions, 3)
-                    text_actions = 'Action: ' + ' '.join(text_action) + '\n'
-                    data["caption"].append(text_actions)
-                else:
-                    data["caption"].append("No action")
+                # for idx , action in enumerate(data["actions"][-1]):
+                #     text_actions = convert_to_text(action)
+                #     all_actions.extend(text_actions)
+                # if all_actions:
+                #     text_action = top_k_common_items(all_actions, 3)
+                #     text_actions = 'Action: ' + ' '.join(text_action) + '\n'
+                #     data["caption"].append(text_actions)
+                # else:
+                #     data["caption"].append("No action")
                 
 
         # if self.split == 'val':

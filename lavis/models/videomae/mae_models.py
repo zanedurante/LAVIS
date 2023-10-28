@@ -1,3 +1,5 @@
+
+
 """
  Copyright (c) 2023, salesforce.com, inc.
  All rights reserved.
@@ -12,7 +14,7 @@ import copy
 import torch
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
-from transformers import T5TokenizerFast
+from transformers import T5TokenizerFast, AutoTokenizer, OPTModel
 
 from lavis.common.registry import registry
 from lavis.models.blip2_models.blip2 import Blip2Base, disabled_train
@@ -23,7 +25,7 @@ from transformers.modeling_outputs import BaseModelOutput
 # https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
 
 
-@registry.register_model("trio_t5")
+@registry.register_model("video_mae")
 class TrioT5(Blip2Base):
     """
     Trio T5 model.
@@ -42,7 +44,7 @@ class TrioT5(Blip2Base):
 
     def __init__(
         self,
-        vit_model="eva_clip_g",
+        vit_model="clip_L",
         img_size=224,
         drop_path_rate=0,
         use_grad_checkpoint=False,
@@ -68,12 +70,6 @@ class TrioT5(Blip2Base):
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
         )
-        # if freeze_vit:
-            # for name, param in self.visual_encoder.named_parameters():
-            #     param.requires_grad = False
-            # self.visual_encoder = self.visual_encoder.eval()
-            # self.visual_encoder.train = disabled_train
-            # logging.info("freeze vision encoder")
 
         self.Qformer, self.query_tokens = self.init_Qformer(
             num_query_token, self.visual_encoder.num_features
@@ -134,13 +130,8 @@ class TrioT5(Blip2Base):
             raise ValueError("No image or video input found in input dict.")
         with self.maybe_autocast():
             features, restore_mask =   self.visual_encoder(image)
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             image_embeds = self.ln_vision(features)
-        # uncomment following lines for contrastive learning
-        # image_embeds = self.image_norm(image_embeds)[:, 0] # self.image_norm is nn.LayerNorm(eps=1e-5, elementwise_affine=True)
-        # image_proj_embed = self.image_proj(image_embeds) # nn.Linear
-        # compare with text embeddings to compute contrastive loss
-
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
         query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
@@ -753,12 +744,10 @@ class TrioT5(Blip2Base):
 
     @classmethod
     def from_config(cls, cfg):
-        print(cfg)
         vit_model = cfg.get("vit_model", "eva_clip_g_video")
         img_size = cfg.get("image_size")
         num_query_token = cfg.get("num_query_token")
         t5_model = cfg.get("t5_model")
-        random_init_qformer = cfg.get("random_init_qformer", False)
 
         drop_path_rate = cfg.get("drop_path_rate", 0)
         use_grad_checkpoint = cfg.get("use_grad_checkpoint", False)
@@ -799,8 +788,8 @@ class TrioT5(Blip2Base):
         #     model.load_from_pretrained(
         #         url_or_filename="https://storage.googleapis.com/sfr-vision-language-research/LAVIS/models/BLIP2/blip2_pretrained.pth"
         #     )
-        if not random_init_qformer:
-            model.load_checkpoint_from_config(cfg)
+
+        model.load_checkpoint_from_config(cfg)
 
         return model
 """

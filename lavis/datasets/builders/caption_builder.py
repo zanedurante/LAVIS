@@ -49,7 +49,7 @@ class MinecraftBuilder(BaseDatasetBuilder):
         datasets = {"train": None, "eval": None}
 
         self.build_processors()
-
+        
         num_frames = self.config.get("total_num_frames", 4)
         num_skip_frames = self.config.get("num_skip_frames", 4)
 

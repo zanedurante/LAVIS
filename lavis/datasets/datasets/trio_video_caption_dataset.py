@@ -80,19 +80,24 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
         self.annotation = self.metadata # For compatibility with the original code
         self.transforms = self.get_transforms()
         self.prompts = [
-            "A short image caption: ",
-            "A short image description: ",
-            "A photo of ",
-            "An image that shows ",
-            "Write a short description of the image. ",
-            "Write a description for the photo.",
-            "Provide a description of what is presented in the photo. ",
-            "Briefly describe the content of the image. ",
-            "Can you briefly explain what you see in the image? ",
-            "Could you use a few words to describe what you perceive in the photo? ",
-            "Please provide a short depiction of the picture. ",
-            "Using language, provide a short account of the image. ",
-            "Use a few words to illustrate what is happening in the picture. ",
+            # "A short image caption: ",
+            # "A short image description: ",
+            # "A photo of ",
+            # "An image that shows ",
+            # "Write a short description of the image. ",
+            # "Write a description for the photo.",
+            # "Provide a description of what is presented in the photo. ",
+            # "Briefly describe the content of the image. ",
+            # "Can you briefly explain what you see in the image? ",
+            # "Could you use a few words to describe what you perceive in the photo? ",
+            # "Please provide a short depiction of the picture. ",
+            # "Using language, provide a short account of the image. ",
+            # "Use a few words to illustrate what is happening in the picture. ",
+            'A Minecraft video with action sequences of ',
+            'The player play Minecraft with  the following actions: ',
+            'A video showcasing action sequences in Minecraft: ',
+            "The player engages in these actions while playing Minecraft: "
+
         ]
         self.prompt_idx = 0 # Index of the current prompt
 
