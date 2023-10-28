@@ -10,11 +10,12 @@ model:
   load_finetuned: False
   vit_model: "clip_b"
   random_init_qformer: True
+  num_frames: 8
 
 datasets:
   minecraft: # name of the dataset builder
     data_type: videos
-    total_num_frames: 4
+    total_num_frames: 8
     num_skip_frames: 0
     vis_processor:
         train:

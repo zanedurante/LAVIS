@@ -375,7 +375,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.75,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.5,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -577,7 +577,7 @@ class SpaceTimeTransformer(nn.Module):
         return x, restore_mask
 
 
-def create_vit_b_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,precision="fp16",    num_frames = 4):
+def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4):
     model = SpaceTimeTransformer(
         img_size=img_size,
         num_frames=num_frames,
@@ -599,7 +599,7 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,pre
         nn.init.ones_(block.norm3.weight)
         nn.init.zeros_(block.norm3.bias)
     
-    print("ckpts_vals:", ckpt_vals)
+    # print("ckpts_vals:", ckpt_vals)
     # ckpts_vals: _IncompatibleKeys(missing_keys=['temporal_embed', 'patch_embed.proj.bias', 'blocks.0.timeattn.qkv.weight', 'blocks.0.timeattn.qkv.bias', 'blocks.0.timeattn.proj.weight', 'blocks.0.timeattn.proj.bias', 'blocks.0.norm3.weight', 'blocks.0.norm3.bias', 'blocks.1.timeattn.qkv.weight', 'blocks.1.timeattn.qkv.bias', 'blocks.1.timeattn.proj.weight', 'blocks.1.timeattn.proj.bias', 'blocks.1.norm3.weight', 'blocks.1.norm3.bias', 'blocks.2.timeattn.qkv.weight', 'blocks.2.timeattn.qkv.bias', 'blocks.2.timeattn.proj.weight', 'blocks.2.timeattn.proj.bias', 'blocks.2.norm3.weight', 'blocks.2.norm3.bias', 'blocks.3.timeattn.qkv.weight', 'blocks.3.timeattn.qkv.bias', 'blocks.3.timeattn.proj.weight', 'blocks.3.timeattn.proj.bias', 'blocks.3.norm3.weight', 'blocks.3.norm3.bias', 'blocks.4.timeattn.qkv.weight', 'blocks.4.timeattn.qkv.bias', 'blocks.4.timeattn.proj.weight', 'blocks.4.timeattn.proj.bias', 'blocks.4.norm3.weight', 'blocks.4.norm3.bias', 'blocks.5.timeattn.qkv.weight', 'blocks.5.timeattn.qkv.bias', 'blocks.5.timeattn.proj.weight', 'blocks.5.timeattn.proj.bias', 'blocks.5.norm3.weight', 'blocks.5.norm3.bias', 'blocks.6.timeattn.qkv.weight', 'blocks.6.timeattn.qkv.bias', 'blocks.6.timeattn.proj.weight', 'blocks.6.timeattn.proj.bias', 'blocks.6.norm3.weight', 'blocks.6.norm3.bias', 'blocks.7.timeattn.qkv.weight', 'blocks.7.timeattn.qkv.bias', 'blocks.7.timeattn.proj.weight', 'blocks.7.timeattn.proj.bias', 'blocks.7.norm3.weight', 'blocks.7.norm3.bias', 'blocks.8.timeattn.qkv.weight', 'blocks.8.timeattn.qkv.bias', 'blocks.8.timeattn.proj.weight', 'blocks.8.timeattn.proj.bias', 'blocks.8.norm3.weight', 'blocks.8.norm3.bias', 'blocks.9.timeattn.qkv.weight', 'blocks.9.timeattn.qkv.bias', 'blocks.9.timeattn.proj.weight', 'blocks.9.timeattn.proj.bias', 'blocks.9.norm3.weight', 'blocks.9.norm3.bias', 'blocks.10.timeattn.qkv.weight', 'blocks.10.timeattn.qkv.bias', 'blocks.10.timeattn.proj.weight', 'blocks.10.timeattn.proj.bias', 'blocks.10.norm3.weight', 'blocks.10.norm3.bias', 'blocks.11.timeattn.qkv.weight', 'blocks.11.timeattn.qkv.bias', 'blocks.11.timeattn.proj.weight', 'blocks.11.timeattn.proj.bias', 'blocks.11.norm3.weight', 'blocks.11.norm3.bias'], unexpected_keys=['head.weight', 'head.bias'])
 
     # import pdb; pdb.set_trace()
@@ -622,9 +622,9 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,pre
     model.fc = nn.Identity()
     #model.vid_proj = nn.Linear()
     #with torch.no_grad():
-    model.image_proj = nn.Linear(768, 512) # CLIP Vision to CLIP text embed space
-    model.vid_proj.weight.copy_(vit_checkpoint['head.weight'])
-    model.vid_proj.bias.copy_(vit_checkpoint['head.bias']) #Load contrastive projection layer from 'head.weight', 'head.bias'
+    # model.image_proj = nn.Linear(768, 512) # CLIP Vision to CLIP text embed space
+    # model.image_proj.weight.copy_(vit_checkpoint['head.weight'])
+    # model.image_proj.bias.copy_(vit_checkpoint['head.bias']) #Load contrastive projection layer from 'head.weight', 'head.bias'
     
     # use checkpoint
     if use_checkpoint:
@@ -633,7 +633,7 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,pre
 
     return model
 
-def create_eva_vit_g_video(img_size=224,drop_path_rate=0.75,use_checkpoint=False,precision="fp16",    num_frames = 4
+def create_eva_vit_g_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4
 ):
     #import pdb; pdb.set_trace()
     # TODO: Choose better number of frames

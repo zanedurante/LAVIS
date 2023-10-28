@@ -83,7 +83,7 @@ def convert_to_text(action_dict):
         # Handling the "camera" key separately.
         if key == "camera":
                 if any(value != 0):
-                    non_zero_actions.append('[mouse dx:' + str(value[0]) + ', mouse dy:' + str(value[1]) + ']')
+                    non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
 
         else:
             # Add the key to the list if the value is non-zero.

@@ -57,6 +57,7 @@ class TrioT5(Blip2Base):
         num_few_shot_examples=0,
         few_shot_prob=0,
         qformer_text_input=True,
+        num_frames=4,
     ):
         """
         apply_lemmatizer: when set to True, postprocess predict_answers() result with lemmas.
@@ -64,9 +65,9 @@ class TrioT5(Blip2Base):
         super().__init__()
 
         self.tokenizer = self.init_tokenizer(truncation_side="left")
-
+        # import pdb; pdb.set_trace()
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
-            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision
+            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames
         )
         # if freeze_vit:
             # for name, param in self.visual_encoder.named_parameters():
@@ -759,6 +760,7 @@ class TrioT5(Blip2Base):
         num_query_token = cfg.get("num_query_token")
         t5_model = cfg.get("t5_model")
         random_init_qformer = cfg.get("random_init_qformer", False)
+        num_frames = cfg.get("num_frames", 4)
 
         drop_path_rate = cfg.get("drop_path_rate", 0)
         use_grad_checkpoint = cfg.get("use_grad_checkpoint", False)
@@ -792,6 +794,7 @@ class TrioT5(Blip2Base):
             num_few_shot_examples=num_few_shot_examples,
             few_shot_prob=few_shot_prob,
             qformer_text_input=qformer_text_input,
+            num_frames=num_frames,
         )
 
         # if qformer_text_input:
