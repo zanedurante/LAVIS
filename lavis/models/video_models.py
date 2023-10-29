@@ -65,8 +65,8 @@ class PatchDropout(torch.nn.Module):
         """
         If force drop is true it will drop the tokens also during inference.
         """
-        # import pdb; pdb.set_trace()
-        if not self.training and not force_drop: return x        
+        # if not self.training and not force_drop: return x    
+            
         if self.keep_rate == 1: return x
 
         # batch, length, dim
@@ -75,14 +75,13 @@ class PatchDropout(torch.nn.Module):
         # making cls mask (assumes that CLS is always the 1st element)
         cls_mask = torch.zeros(N, 1, dtype=torch.int64, device=x.device)
         # generating patch mask
-        patch_mask, restore_mask = self.get_mask(x)
+        patch_mask, mask, restore_mask = self.get_mask(x)
 
         # cat cls and patch mask
         patch_mask = torch.hstack([cls_mask, patch_mask])
         # gather tokens
         x = torch.gather(x, dim=1, index=patch_mask.unsqueeze(-1).repeat(1, 1, D))
-
-        return x, restore_mask
+        return x, mask, restore_mask
     
     def get_mask(self, x):
         if self.sampling == "uniform":
@@ -93,21 +92,21 @@ class PatchDropout(torch.nn.Module):
             raise NotImplementedError(f"PatchDropout does not support {self.sampling} sampling")
             return None
 
-    def uniform_mask(self, x):
-        """
-        Returns an id-mask using uniform sampling
-        """
-        N, L, D = x.shape
-        _L = L -1 # patch lenght (without CLS)
+    # def uniform_mask(self, x):
+    #     """
+    #     Returns an id-mask using uniform sampling
+    #     """
+    #     N, L, D = x.shape
+    #     _L = L -1 # patch lenght (without CLS)
         
-        keep = self.n_keep
-        patch_mask = torch.rand(N, _L, device=x.device)
-        patch_mask = torch.argsort(patch_mask, dim=1) + 1
-        patch_mask = patch_mask[:, :keep]
-        if not self.token_shuffling:
-            patch_mask = patch_mask.sort(1)[0]
+    #     keep = self.n_keep
+    #     patch_mask = torch.rand(N, _L, device=x.device)
+    #     patch_mask = torch.argsort(patch_mask, dim=1) + 1
+    #     patch_mask = patch_mask[:, :keep]
+    #     if not self.token_shuffling:
+    #         patch_mask = patch_mask.sort(1)[0]
         
-        return patch_mask
+    #     return patch_mask
     
     def tubelet_uniform_mask(self, x):
         """
@@ -130,9 +129,18 @@ class PatchDropout(torch.nn.Module):
         values_to_add = self.tokens_per_frame * torch.arange(0, self.num_frames).repeat_interleave(keep).to(x.device)
 
         patch_mask = repeated_patch_mask + values_to_add 
+        restore_mask = repeated_restore_mask 
+
         patch_mask = patch_mask + 1 # add 1 to account for CLS token (assumes it is leading token)
         
         restore_mask = repeated_restore_mask + 1 # add 1 to account for CLS token (assumes it is leading token)
+
+        ## 
+        mask = torch.ones([N, L], device=x.device)
+        mask[:, :keep] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore)
+        mask = mask.repeat(1, self.num_frames)
 
         if not self.token_shuffling:
             patch_mask = patch_mask.sort(1)[0]
@@ -140,7 +148,7 @@ class PatchDropout(torch.nn.Module):
         else:
             raise NotImplementedError("Token shuffling is not implemented for tubelet_uniform_mask")
         
-        return patch_mask, restore_mask
+        return patch_mask, mask, restore_mask
 
 def attn(q, k, v):
     sim = einsum('b i d, b j d -> b i j', q, k)
@@ -267,7 +275,6 @@ class GatedTimeVarAttention(VarAttention):
     """
 
     def forward(self, x, einops_from, einops_to, **einops_dims):
-        # import pdb; pdb.set_trace()
         num_input_patches = x.size(1) - 1
         if num_input_patches == self.patches_per_frame and not self.training:
             return x
@@ -550,7 +557,7 @@ class SpaceTimeTransformer(nn.Module):
 
         curr_patches = x.shape[1]
         x = x + total_pos_embed[:, :curr_patches]
-        x, restore_mask = self.pos_drop(x)
+        x, mask, restore_mask = self.pos_drop(x)
         x = self.norm_pre(x)
         if self.training:
             n = self.patches_per_frame_after_dropout # account for patch dropout
@@ -558,7 +565,6 @@ class SpaceTimeTransformer(nn.Module):
             n = self.patches_per_frame # use all patches at inference
 
         f = num_frames
-        #import pdb; pdb.set_trace()
         for blk in self.blocks:
             x = blk(x, self.einops_from_space, self.einops_to_space, self.einops_from_time,
                     self.einops_to_time,
@@ -567,14 +573,14 @@ class SpaceTimeTransformer(nn.Module):
         #x = self.norm(x)[:, 0]
         #x = self.pre_logits(x)
 
-        return x, restore_mask
+        return x, mask, restore_mask
 
     def forward(self, x):
         # convert image to video format before sending in
         if len(x.shape) == 4:
             x = x.unsqueeze(1) # convert b, c, h, w --> b, 1, c, h, w (t=1 here)
-        x, restore_mask = self.forward_features(x)
-        return x, restore_mask
+        x, mask, restore_mask = self.forward_features(x)
+        return x, mask, restore_mask
 
 
 def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4):
@@ -602,7 +608,6 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
     # print("ckpts_vals:", ckpt_vals)
     # ckpts_vals: _IncompatibleKeys(missing_keys=['temporal_embed', 'patch_embed.proj.bias', 'blocks.0.timeattn.qkv.weight', 'blocks.0.timeattn.qkv.bias', 'blocks.0.timeattn.proj.weight', 'blocks.0.timeattn.proj.bias', 'blocks.0.norm3.weight', 'blocks.0.norm3.bias', 'blocks.1.timeattn.qkv.weight', 'blocks.1.timeattn.qkv.bias', 'blocks.1.timeattn.proj.weight', 'blocks.1.timeattn.proj.bias', 'blocks.1.norm3.weight', 'blocks.1.norm3.bias', 'blocks.2.timeattn.qkv.weight', 'blocks.2.timeattn.qkv.bias', 'blocks.2.timeattn.proj.weight', 'blocks.2.timeattn.proj.bias', 'blocks.2.norm3.weight', 'blocks.2.norm3.bias', 'blocks.3.timeattn.qkv.weight', 'blocks.3.timeattn.qkv.bias', 'blocks.3.timeattn.proj.weight', 'blocks.3.timeattn.proj.bias', 'blocks.3.norm3.weight', 'blocks.3.norm3.bias', 'blocks.4.timeattn.qkv.weight', 'blocks.4.timeattn.qkv.bias', 'blocks.4.timeattn.proj.weight', 'blocks.4.timeattn.proj.bias', 'blocks.4.norm3.weight', 'blocks.4.norm3.bias', 'blocks.5.timeattn.qkv.weight', 'blocks.5.timeattn.qkv.bias', 'blocks.5.timeattn.proj.weight', 'blocks.5.timeattn.proj.bias', 'blocks.5.norm3.weight', 'blocks.5.norm3.bias', 'blocks.6.timeattn.qkv.weight', 'blocks.6.timeattn.qkv.bias', 'blocks.6.timeattn.proj.weight', 'blocks.6.timeattn.proj.bias', 'blocks.6.norm3.weight', 'blocks.6.norm3.bias', 'blocks.7.timeattn.qkv.weight', 'blocks.7.timeattn.qkv.bias', 'blocks.7.timeattn.proj.weight', 'blocks.7.timeattn.proj.bias', 'blocks.7.norm3.weight', 'blocks.7.norm3.bias', 'blocks.8.timeattn.qkv.weight', 'blocks.8.timeattn.qkv.bias', 'blocks.8.timeattn.proj.weight', 'blocks.8.timeattn.proj.bias', 'blocks.8.norm3.weight', 'blocks.8.norm3.bias', 'blocks.9.timeattn.qkv.weight', 'blocks.9.timeattn.qkv.bias', 'blocks.9.timeattn.proj.weight', 'blocks.9.timeattn.proj.bias', 'blocks.9.norm3.weight', 'blocks.9.norm3.bias', 'blocks.10.timeattn.qkv.weight', 'blocks.10.timeattn.qkv.bias', 'blocks.10.timeattn.proj.weight', 'blocks.10.timeattn.proj.bias', 'blocks.10.norm3.weight', 'blocks.10.norm3.bias', 'blocks.11.timeattn.qkv.weight', 'blocks.11.timeattn.qkv.bias', 'blocks.11.timeattn.proj.weight', 'blocks.11.timeattn.proj.bias', 'blocks.11.norm3.weight', 'blocks.11.norm3.bias'], unexpected_keys=['head.weight', 'head.bias'])
 
-    # import pdb; pdb.set_trace()
 
     # model.pos_embed.requires_grad = False
     # model.cls_token.requires_grad = False
@@ -635,7 +640,6 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
 
 def create_eva_vit_g_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4
 ):
-    #import pdb; pdb.set_trace()
     # TODO: Choose better number of frames
     # For now, hardcode 4
     model = SpaceTimeTransformer(

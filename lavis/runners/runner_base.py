@@ -378,6 +378,7 @@ class RunnerBase:
                     val_log = self.eval_epoch(
                         split_name=split_name, cur_epoch=cur_epoch
                     )
+                    # import pdb; pdb.set_trace()
                     if val_log is not None:
                         if is_main_process():
                             assert (
@@ -401,7 +402,7 @@ class RunnerBase:
             if self.evaluate_only:
                 break
 
-            dist.barrier()
+            # dist.barrier()
 
         # testing phase
         test_epoch = "best" if len(self.valid_splits) > 0 else cur_epoch
@@ -466,7 +467,6 @@ class RunnerBase:
             dataset=self.datasets[split_name],
         )
         results = self.task.evaluation(model, data_loader)
-
         if results is not None:
             return self.task.after_evaluation(
                 val_result=results,

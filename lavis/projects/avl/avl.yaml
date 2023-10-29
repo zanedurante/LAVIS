@@ -36,9 +36,9 @@ run:
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 1
-  batch_size_eval: 2
-  num_workers: 1
+  batch_size_train: 2
+  batch_size_eval: 16
+  num_workers: 2
   accum_grad_iters: 4
 
   # Currently unused args, used for evaluation
@@ -57,7 +57,7 @@ run:
 
   evaluate: False 
   train_splits: ["train"]
-  valid_splits: []
+  valid_splits: ["train"]
 
   device: "cuda"
   world_size: 1

@@ -18,6 +18,7 @@ from lavis.common.registry import registry
 from lavis.models.blip2_models.blip2 import Blip2Base, disabled_train
 from lavis.models.blip2_models.modeling_t5 import T5Config, T5ForConditionalGeneration
 from transformers.modeling_outputs import BaseModelOutput
+from timm.models.vision_transformer import PatchEmbed, Block
 
 # TODO: Allow for better fp16 support since the model is frozen. Right now fp32 is used for the model.
 # https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
@@ -65,7 +66,6 @@ class TrioT5(Blip2Base):
         super().__init__()
 
         self.tokenizer = self.init_tokenizer(truncation_side="left")
-        # import pdb; pdb.set_trace()
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames
         )
@@ -119,6 +119,111 @@ class TrioT5(Blip2Base):
 
         self.qformer_text_input = qformer_text_input
 
+        
+        # MAE decoder specifics
+        img_size=224
+        patch_size=16
+        in_chans=3
+        embed_dim=768
+        depth=24
+        num_heads=16
+        decoder_embed_dim=512
+        decoder_depth=8
+        decoder_num_heads=16
+        mlp_ratio=4.
+        norm_layer=nn.LayerNorm
+        norm_pix_loss=False
+        num_patches = self.visual_encoder.patch_embed.num_patches #self.patch_embed.num_patches
+
+        self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim)
+
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
+
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
+
+        self.decoder_blocks = nn.ModuleList([
+            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            for i in range(decoder_depth)])
+
+        self.decoder_norm = norm_layer(decoder_embed_dim)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+        # --------------------------------------------------------------------------
+
+        self.norm_pix_loss = norm_pix_loss 
+
+    def forward_decoder(self, x, ids_restore):
+        # embed tokens
+        x = self.decoder_embed(x)
+
+        # append mask tokens to sequence
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+        x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
+        x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+
+        # add pos embed
+        x = x + self.decoder_pos_embed
+
+        # apply Transformer blocks
+        for blk in self.decoder_blocks:
+            x = blk(x)
+        x = self.decoder_norm(x)
+
+        # predictor projection
+        x = self.decoder_pred(x)
+
+        # remove cls token
+        x = x[:, 1:, :]
+
+        return x
+    
+    def forward_loss(self, imgs, pred, mask):
+        """
+        imgs: [N, 3, H, W]
+        pred: [N, L, p*p*3]
+        mask: [N, L], 0 is keep, 1 is remove, 
+        """
+        target = self.patchify(imgs)
+        if self.norm_pix_loss:
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            target = (target - mean) / (var + 1.e-6)**.5
+
+        loss = (pred - target.view(target.shape[0], target.shape[1] * target.shape[2], target.shape[3])) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        return loss
+    
+    def patchify(self, imgs):
+        """
+        imgs: (N, 3, H, W)
+        x: (N, L, patch_size**2 *3)
+        """
+        p = self.visual_encoder.patch_embed.patch_size[0]
+        # torch.Size([1, 8, 3, 224, 224])
+        assert imgs.shape[3] == imgs.shape[4] and imgs.shape[3] % p == 0
+
+        h = w = imgs.shape[3] // p
+        x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], 3, h, p, w, p))
+        x = torch.einsum('nfchpwq->nfhwpqc', x)
+        x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2 * 3))
+        return x
+
+    def unpatchify(self, x):
+        """
+        x: (N, F, L, patch_size**2 *3)
+        imgs: (N, F, 3, H, W)
+        """
+        p = self.visual_encoder.patch_embed.patch_size[0]
+        h = w = int(x.shape[1]**.5)
+        assert h * w == x.shape[1]
+        
+        x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p, 3))
+        x = torch.einsum('nfhwpqc->nfchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], x.shape[1], 3, h * p, h * p))
+        return imgs
+
     def forward(self, samples):
         # print('-----------------')
         # print(samples["text_input"])
@@ -126,7 +231,6 @@ class TrioT5(Blip2Base):
         # print('-----------------')
         
         # allow for image or video input
-        # import pdb; pdb.set_trace()
         if "image" in samples.keys():
             image = samples["image"]
         elif "video" in samples.keys():
@@ -134,13 +238,15 @@ class TrioT5(Blip2Base):
         else:
             raise ValueError("No image or video input found in input dict.")
         with self.maybe_autocast():
-            features, restore_mask =   self.visual_encoder(image)
-            # import pdb; pdb.set_trace()
+            features, mask, restore_mask =   self.visual_encoder(image)
+            
             image_embeds = self.ln_vision(features)
         # uncomment following lines for contrastive learning
         # image_embeds = self.image_norm(image_embeds)[:, 0] # self.image_norm is nn.LayerNorm(eps=1e-5, elementwise_affine=True)
         # image_proj_embed = self.image_proj(image_embeds) # nn.Linear
         # compare with text embeddings to compute contrastive loss
+        pred = self.forward_decoder(image_embeds, restore_mask)
+        mae_loss = self.forward_loss(image, pred, mask)
 
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
@@ -215,7 +321,7 @@ class TrioT5(Blip2Base):
                 return_dict=True,
                 labels=targets,
             )
-            loss = outputs.loss
+            loss = outputs.loss + mae_loss
 
             return {"loss": loss}
 
@@ -378,7 +484,6 @@ class TrioT5(Blip2Base):
         else:
             with self.maybe_autocast():
                 image_embeds = self.ln_vision(self.visual_encoder(image))
-            #import pdb; pdb.set_trace()
             image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
             if self.qformer_text_input:
