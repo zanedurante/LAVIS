@@ -379,20 +379,22 @@ class RunnerBase:
                         split_name=split_name, cur_epoch=cur_epoch
                     )
                     # import pdb; pdb.set_trace()
-                    if val_log is not None:
-                        if is_main_process():
-                            assert (
-                                "agg_metrics" in val_log
-                            ), "No agg_metrics found in validation log."
+                    # if val_log is not None:
+                    #     if is_main_process():
+                    #         assert (
+                    #             "agg_metrics" in val_log
+                    #         ), "No agg_metrics found in validation log."
 
-                            agg_metrics = val_log["agg_metrics"]
-                            if agg_metrics > best_agg_metric and split_name == "val":
-                                best_epoch, best_agg_metric = cur_epoch, agg_metrics
+                    #         agg_metrics = val_log["agg_metrics"]
+                    #         if agg_metrics > best_agg_metric and split_name == "val":
+                    #             best_epoch, best_agg_metric = cur_epoch, agg_metrics
 
-                                self._save_checkpoint(cur_epoch, is_best=True)
+                    #             self._save_checkpoint(cur_epoch, is_best=True)
 
-                            val_log.update({"best_epoch": best_epoch})
-                            self.log_stats(val_log, split_name)
+                    #         val_log.update({"best_epoch": best_epoch})
+                    #         self.log_stats(val_log, split_name)
+                    if cur_epoch % 5 == 0:
+                        self._save_checkpoint(cur_epoch, is_best=False)
 
             else:
                 # if no validation split is provided, we just save the checkpoint at the end of each epoch.
@@ -623,7 +625,7 @@ class RunnerBase:
             checkpoint = torch.load(url_or_filename, map_location=self.device)
         else:
             raise RuntimeError("checkpoint url or path is invalid")
-
+     
         state_dict = checkpoint["model"]
         self.unwrap_dist_model(self.model).load_state_dict(state_dict)
 

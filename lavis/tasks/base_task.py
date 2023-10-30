@@ -93,7 +93,7 @@ class BaseTask:
         metric_logger = MetricLogger(delimiter="  ")
         header = "Evaluation"
         # TODO make it configurable
-        print_freq = 10
+        print_freq = 50
 
         results = []
         # import pdb; pdb.set_trace()
@@ -114,7 +114,7 @@ class BaseTask:
 
         # if is_dist_avail_and_initialized():
         #     dist.barrier()
-
+        # import pdb; pdb.set_trace()
         return results
 
     def train_epoch(

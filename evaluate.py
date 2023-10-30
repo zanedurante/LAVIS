@@ -77,15 +77,17 @@ def main():
     setup_logger()
 
     cfg.pretty_print()
-
+ 
     task = tasks.setup_task(cfg)
     datasets = task.build_datasets(cfg)
     model = task.build_model(cfg)
-
+   
     runner = RunnerBase(
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets
     )
-    runner.evaluate(skip_reload=True)
+    
+    runner._load_checkpoint(cfg.run_cfg.resume_ckpt_path)
+    runner.evaluate( skip_reload=True)
 
 
 if __name__ == "__main__":

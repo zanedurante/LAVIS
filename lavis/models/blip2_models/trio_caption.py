@@ -121,35 +121,35 @@ class TrioT5(Blip2Base):
 
         
         # MAE decoder specifics
-        img_size=224
-        patch_size=16
-        in_chans=3
-        embed_dim=768
-        depth=24
-        num_heads=16
-        decoder_embed_dim=512
-        decoder_depth=8
-        decoder_num_heads=16
-        mlp_ratio=4.
-        norm_layer=nn.LayerNorm
-        norm_pix_loss=False
-        num_patches = self.visual_encoder.patch_embed.num_patches #self.patch_embed.num_patches
+        self.img_size=224
+        self.patch_size=16
+        self.in_chans=3
+        self.embed_dim=768
+        self.depth=24
+        self.num_heads=16
+        self.decoder_embed_dim=512
+        self.decoder_depth=8
+        self.decoder_num_heads=16
+        self.mlp_ratio=4.
+        self.norm_layer=nn.LayerNorm
+        self.norm_pix_loss=False
+        self.num_patches = self.visual_encoder.patch_embed.num_patches #self.patch_embed.num_patches
 
-        self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim)
+        self.decoder_embed = nn.Linear(self.embed_dim, self.decoder_embed_dim)
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.decoder_embed_dim))
 
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, self.decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
-            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-            for i in range(decoder_depth)])
+            Block(self.decoder_embed_dim, self.decoder_num_heads, self.mlp_ratio, qkv_bias=True, norm_layer=self.norm_layer)
+            for i in range(self.decoder_depth)])
 
-        self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+        self.decoder_norm = self.norm_layer(self.decoder_embed_dim)
+        self.decoder_pred = nn.Linear(self.decoder_embed_dim, self.patch_size**2 * self.in_chans, bias=True) # decoder to patch
         # --------------------------------------------------------------------------
 
-        self.norm_pix_loss = norm_pix_loss 
+        self.norm_pix_loss = self.norm_pix_loss 
 
     def forward_decoder(self, x, ids_restore):
         # embed tokens
@@ -223,7 +223,21 @@ class TrioT5(Blip2Base):
         x = torch.einsum('nfhwpqc->nfchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], x.shape[1], 3, h * p, h * p))
         return imgs
-
+    
+    def mae_predict(self, samples):
+        if "image" in samples.keys():
+            image = samples["image"]
+        elif "video" in samples.keys():
+            image = samples["video"]
+        else:
+            raise ValueError("No image or video input found in input dict.")
+        with self.maybe_autocast():
+            features, mask, restore_mask =   self.visual_encoder(image)
+            
+            image_embeds = self.ln_vision(features)
+            pred = self.forward_decoder(image_embeds, restore_mask)
+            return pred, mask
+        
     def forward(self, samples):
         # print('-----------------')
         # print(samples["text_input"])
@@ -321,9 +335,9 @@ class TrioT5(Blip2Base):
                 return_dict=True,
                 labels=targets,
             )
-            loss = outputs.loss + mae_loss
+            loss = outputs.loss + mae_loss * 3
 
-            return {"loss": loss}
+            return {"loss": loss, "pred": pred, "image": image}
 
     def prepare_few_shot_embeds(self, samples):
         this_n_fs = random.choices(
