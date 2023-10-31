@@ -16,7 +16,7 @@ import wandb
 
 import lavis.tasks as tasks
 from lavis.common.config import Config
-from lavis.common.dist_utils import get_rank, init_distributed_mode
+from lavis.common.dist_utils import get_rank, init_distributed_mode, init_distributed_gcr
 from lavis.common.logger import setup_logger
 from lavis.common.optims import (
     LinearWarmupCosineLRScheduler,
@@ -81,7 +81,9 @@ def main():
 
     cfg = Config(parse_args())
 
-    init_distributed_mode(cfg.run_cfg)
+    # use GCR distributed mode setup
+    #init_distributed_mode(cfg.run_cfg)
+    init_distributed_gcr()
 
     setup_seeds(cfg)
 

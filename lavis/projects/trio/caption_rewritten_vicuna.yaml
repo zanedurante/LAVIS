@@ -4,15 +4,16 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: trio_t5
+  arch: trio_vicuna
 
-  model_type: flant5xl
+  model_type: vicuna7b
   load_finetuned: False
   vit_precision: "fp32"
 
 datasets:
   rewritten_caption: # name of the dataset builder
     data_type: videos
+    prompt_type: "video"
     total_num_frames: 4
     num_skip_frames: -1
     vis_processor:

@@ -211,7 +211,7 @@ class VarAttention(nn.Module):
         q, k, v = self.qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
-        q *= self.scale
+        q = q * self.scale
 
         # splice out CLS token at index 1
         (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
@@ -256,6 +256,7 @@ class GatedTimeVarAttention(VarAttention):
     """
 
     def forward(self, x, einops_from, einops_to, **einops_dims):
+        #import pdb; pdb.set_trace()
         num_input_patches = x.size(1) - 1
         if num_input_patches == self.patches_per_frame and not self.training:
             return x
@@ -266,7 +267,7 @@ class GatedTimeVarAttention(VarAttention):
         q, k, v = self.qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
-        q *= self.scale
+        q = q * self.scale
         
         # splice out CLS token at index 1
         (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
@@ -584,6 +585,7 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,
         time_init='zeros',
         freeze_first_frame=True,
         clip=True,
+        patch_drop_rate=0.75,
     )
     model.head = nn.Identity()
     model.pre_logits = nn.Identity()

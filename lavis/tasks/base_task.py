@@ -15,6 +15,9 @@ from lavis.common.logger import MetricLogger, SmoothedValue
 from lavis.common.registry import registry
 from lavis.datasets.data_utils import prepare_sample
 import wandb
+from datetime import datetime
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 
 class BaseTask:
     def __init__(self, **kwargs):
@@ -118,7 +121,7 @@ class BaseTask:
         scaler=None,
         cuda_enabled=False,
         log_freq=50,
-        accum_grad_iters=1,
+        accum_grad_iters=8,
         logger="stdout",
     ):
         return self._train_inner_loop(
@@ -147,7 +150,7 @@ class BaseTask:
         scaler=None,
         cuda_enabled=False,
         log_freq=50,
-        accum_grad_iters=1,
+        accum_grad_iters=8,
         logger="stdout",
     ):
         return self._train_inner_loop(
@@ -179,6 +182,8 @@ class BaseTask:
         cuda_enabled=False,
         accum_grad_iters=1,
         logger="stdout",
+        save_every=10000, # Save model checkpoint every 10k iters
+        save_dir=None # Get's next automatically 
     ):
         """
         An inner training loop compatible with both epoch-based and iter-based training.
@@ -186,6 +191,12 @@ class BaseTask:
         When using epoch-based, training stops after one epoch; when using iter-based,
         training stops after #iters_per_epoch iterations.
         """
+        # Hardcoded values here for quick experimentation
+        
+        if save_dir is None:
+            now = datetime.now()  # Current date and time
+            save_dir = now.strftime("%Y%m%d_%H%M%S")  # Format as string, e.g., '20231026_153045'
+            print("Saving to dir: ", save_dir)
         use_amp = scaler is not None
 
         if not hasattr(data_loader, "__next__"):
@@ -247,6 +258,17 @@ class BaseTask:
                 else:    
                     optimizer.step()
                 optimizer.zero_grad()
+
+            if is_main_process() and i % save_every == 0 and not i == 0:
+                filename = f"/mnt/datasets_mnt/output/ntp/{save_dir}/visual_encoder_e={epoch}_i={i}.pth"
+                if not os.path.exists(os.path.dirname(filename)):
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                print("Saving model to: ", filename)
+
+                if isinstance(model, DDP):
+                    torch.save(model.module.visual_encoder.state_dict(), filename)
+                else:
+                    torch.save(model.visual_encoder.state_dict(), filename)
 
             if is_main_process() and logger == "wandb":
                 wandb.log(loss_dict)

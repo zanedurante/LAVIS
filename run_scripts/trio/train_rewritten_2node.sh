@@ -1,0 +1,1 @@
+python -m torch.distributed.run --nproc_per_node=16 --nnodes=2 train.py --cfg-path lavis/projects/trio/caption_rewritten_4node.yaml

@@ -1,0 +1,1 @@
+python -m torch.distributed.run --nproc_per_node=16 --nnodes=4 --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT train.py --cfg-path lavis/projects/trio/caption_rewritten_4node.yaml

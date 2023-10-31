@@ -4,14 +4,16 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: trio_t5
+  arch: trio_vicuna # trio_vicuna
 
-  model_type: flant5xl
+  model_type: vicuna7b # vicuna7b
   load_finetuned: False
+  vit_precision: "fp32"
 
 datasets:
   webvid_caption: # name of the dataset builder
     data_type: videos
+    prompt_type: "video"
     total_num_frames: 4
     num_skip_frames: -1
     vis_processor:
@@ -33,9 +35,10 @@ run:
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 16
-  batch_size_eval: 64
-  num_workers: 4
+  batch_size_train: 1
+  batch_size_eval: 32
+  num_workers: 16
+  accum_grad_iters: 8
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -43,7 +46,7 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "output/Trio/Caption_webvid"
+  output_dir: "output/Trio/Caption_test"
 
   # logging
   log: wandb
@@ -58,4 +61,4 @@ run:
   device: "cuda"
   world_size: 1
   dist_url: "env://"
-  distributed: False
+  distributed: True

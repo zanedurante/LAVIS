@@ -19,7 +19,6 @@ model:
   # bert config
   med_config_path: "configs/models/med_large_config.json"
 
-
 preprocess:
     vis_processor:
         train:

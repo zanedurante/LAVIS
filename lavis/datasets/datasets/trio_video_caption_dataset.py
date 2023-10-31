@@ -63,7 +63,7 @@ def get_transforms(split):
 
 
 class TrioVideoCaptionDataset(VideoCaptionDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=-1, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=-1, total_num_frames=4, prompt_type="image"):
         """
         TrioVideoCaptionDataset structure supports fixed FPS and random frame sampling during training through an interface.
         Use num_skip_frames to set the number of frames to skip for fixed FPS sampling. If -1, assumes random frame sampling. If 0, uses every frame, if 1 uses every other frame, etc.
@@ -94,6 +94,24 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             "Using language, provide a short account of the image. ",
             "Use a few words to illustrate what is happening in the picture. ",
         ]
+
+        if prompt_type == "video":
+            self.prompts = [
+                "A short video caption: ",
+                "A short video description: ",
+                "A video of ",
+                "A video that shows ",
+                "Write a short description of the video. ",
+                "Write a description for the video.",
+                "Provide a description of what is presented in the video. ",
+                "Briefly describe the content of the video. ",
+                "Can you briefly explain what you see in the video? ",
+                "Could you use a few words to describe what you perceive in the video? ",
+                "Please provide a short depiction of the video. ",
+                "Using language, provide a short account of the video. ",
+                "Use a few words to illustrate what is happening in the video. ",
+            ]
+
         self.prompt_idx = 0 # Index of the current prompt
 
     @abstractmethod
@@ -114,6 +132,9 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             video_reader = decord.VideoReader(video_path, num_threads=1)
         except:
             print("Error loading video: {}".format(video_path))
+            print("Saving path to error file...")
+            with open("/mnt/datasets_mnt/output/error_videos.txt", "a") as f:
+                f.write(video_path + "\n")
             imgs = Image.new('RGB', (224, 224), (0, 0, 0))
             imgs = transforms.ToTensor()(imgs).unsqueeze(0)
             # Repeat self.total_num_frames times in first dim
@@ -159,7 +180,7 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
 
 
 class TrioVideoCaptionEvalDataset(TrioVideoCaptionDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=-1, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=-1, total_num_frames=4, prompt_type="image"):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
@@ -167,7 +188,8 @@ class TrioVideoCaptionEvalDataset(TrioVideoCaptionDataset):
         """
         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames) # Note, we keep vis_processor here for compatibility with the original code
         self.prompts = ["A photo of "] # Use single prompt for evals
-
+        if prompt_type == "video":
+            self.prompts = ["A video of "]
 
     # Different data loading for evaluation
     def _load_video(self, video_path, start_frame=0, end_frame=-1):
@@ -176,7 +198,7 @@ class TrioVideoCaptionEvalDataset(TrioVideoCaptionDataset):
         video_length = len(video_reader)
 
         if self.num_skip_frames < 0: # Use evenly spread frame sampling (for eval datasets)
-            frame_indices = np.linspace(0, video_length, self.num_frames)
+            frame_indices = np.linspace(0, video_length - 1, self.num_frames)
         else:
             # TODO: Implement variable/random offsets for fixed FPS sampling
             frame_indices = np.arange(start_frame, end_frame, self.num_skip_frames+1)[:self.total_num_frames]

@@ -47,6 +47,7 @@ class WebVidCapBuilder(BaseDatasetBuilder):
 
         num_frames = self.config.get("total_num_frames", 4)
         num_skip_frames = self.config.get("num_skip_frames", -1)
+        prompt_type = self.config.get("prompt_type", "image")
 
 
 
@@ -71,6 +72,7 @@ class WebVidCapBuilder(BaseDatasetBuilder):
                         vis_root=vis_root,
                         num_skip_frames=num_skip_frames,
                         total_num_frames=num_frames,
+                        prompt_type=prompt_type,
             )
 
         return datasets

@@ -34,7 +34,7 @@ run:
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 2
+  batch_size_train: 4
   batch_size_eval: 32
   num_workers: 16
   accum_grad_iters: 8
@@ -58,6 +58,6 @@ run:
   valid_splits: ["val"]
 
   device: "cuda"
-  world_size: 16
-  dist_url: "env://"
+  world_size: 32
+  #dist_url: "env://" # Rewritten by env variables?
   distributed: True

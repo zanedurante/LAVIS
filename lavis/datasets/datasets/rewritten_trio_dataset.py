@@ -17,7 +17,7 @@ from lavis.datasets.datasets.webvid_trio_dataset import make_trio_csv_from_origi
 
 
 class RewrittenCaptionDataset(WebVidCaptionDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, prompt_type="image"):
         """
         TrioVideoCaptionDataset structure supports fixed FPS and random frame sampling during training through an interface.
         Use num_skip_frames to set the number of frames to skip for fixed FPS sampling. If None, assumes random frame sampling.
@@ -29,12 +29,12 @@ class RewrittenCaptionDataset(WebVidCaptionDataset):
         self.root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
         self.orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/rewrite_10M_train.csv"
         self.converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/rewrite_10M_train_trio_format.csv"
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames, prompt_type)
 
 
 
 class RewrittenCaptionEvalDataset(WebVidCaptionEvalDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, prompt_type="image"):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
@@ -43,5 +43,5 @@ class RewrittenCaptionEvalDataset(WebVidCaptionEvalDataset):
         self.root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
         self.orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/rewrite_10M_val.csv"
         self.converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/rewrite_10M_val_trio_format.csv"
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames) # Note, we keep vis_processor here for compatibility with the original code
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames, prompt_type) # Note, we keep vis_processor here for compatibility with the original code
 

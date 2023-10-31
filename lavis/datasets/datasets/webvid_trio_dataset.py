@@ -47,7 +47,7 @@ def make_trio_csv_from_original(original_path, trio_path, data_dir="/mnt/dataset
 
 
 class WebVidCaptionDataset(TrioVideoCaptionDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, prompt_type="image"):
         """
         TrioVideoCaptionDataset structure supports fixed FPS and random frame sampling during training through an interface.
         Use num_skip_frames to set the number of frames to skip for fixed FPS sampling. If None, assumes random frame sampling.
@@ -56,10 +56,11 @@ class WebVidCaptionDataset(TrioVideoCaptionDataset):
             video, caption, start_frame (optional), end_frame (optional)
         split (string): val or test
         """
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
         self.root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
         self.orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/results_10M_train.csv"
         self.converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/WebVid_10M_train_trio_format.csv"
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames, prompt_type)
+
 
     def _load_metadata(self, reload_csv=False):
         """
@@ -79,17 +80,18 @@ class WebVidCaptionDataset(TrioVideoCaptionDataset):
 
 
 class WebVidCaptionEvalDataset(TrioVideoCaptionEvalDataset):
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, prompt_type="image"):
         """
         vis_root (string): Root directory of images (e.g. coco/images/)
         ann_root (string): directory to store the annotation file
         split (string): val or test
         """
-        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames) # Note, we keep vis_processor here for compatibility with the original code
-        # We use a custome visual processor here that supports FPS sampling + video transforms
         self.root_dataset_path = "/mnt/datasets_mnt/webvid10m/"
         self.orig_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/results_10M_val.csv"
         self.converted_csv_path = "/mnt/datasets_mnt/webvid10m/metadata/WebVid_10M_val_trio_format.csv"
+        super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames, prompt_type) # Note, we keep vis_processor here for compatibility with the original code
+        # We use a custome visual processor here that supports FPS sampling + video transforms
+
 
 
     def _load_metadata(self):
