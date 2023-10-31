@@ -18,7 +18,7 @@ from lavis.datasets.datasets.webvid_trio_dataset import (
 )
 
 from lavis.datasets.datasets.minecraft_dataset import (
-    MinecraftVidDataset, MinecraftVidEvalDataset
+    MinecraftVidDataset
 )
 
 from lavis.datasets.datasets.rewritten_trio_dataset import (
@@ -38,7 +38,7 @@ class MinecraftBuilder(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.train_dataset_cls = MinecraftVidDataset
-        self.eval_dataset_cls = MinecraftVidEvalDataset
+        self.eval_dataset_cls = MinecraftVidDataset
 
     DATASET_CONFIG_DICT = {
         "default": "configs/datasets/minecraft/defaults_action.yaml", 

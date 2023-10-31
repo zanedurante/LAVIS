@@ -7,6 +7,49 @@ from collections import Counter
 from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionDataset
 import json
 import random
+from torchvision import transforms
+from functools import lru_cache
+
+def init_transform_dict(input_res=224,
+                        center_crop=256,
+                        randcrop_scale=(0.5, 1.0),
+                        color_jitter=(0, 0, 0),
+                        norm_mean=(0.485, 0.456, 0.406),
+                        norm_std=(0.229, 0.224, 0.225),
+                        use_clip_norm=True):
+    # Use normalization from: https://github.com/openai/CLIP/blob/a1d071733d7111c9c014f024669f959182114e33/clip/clip.py#L83
+    if use_clip_norm:
+        norm_mean = (0.48145466, 0.4578275, 0.40821073)
+        norm_std = (0.26862954, 0.26130258, 0.27577711)
+    normalize = transforms.Normalize(mean=norm_mean, std=norm_std)
+    tsfm_dict = {
+        'train': transforms.Compose([
+            transforms.RandomResizedCrop(input_res, scale=randcrop_scale),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=color_jitter[0], saturation=color_jitter[1], hue=color_jitter[2]),
+            normalize,
+        ]),
+        'val': transforms.Compose([
+            transforms.Resize(center_crop),
+            transforms.CenterCrop(center_crop),
+            transforms.Resize(input_res),
+            normalize,
+        ]),
+        'test': transforms.Compose([
+            transforms.Resize(center_crop),
+            transforms.CenterCrop(center_crop),
+            transforms.Resize(input_res),
+            normalize,
+        ])
+    }
+    return tsfm_dict
+
+
+def get_transforms(split):
+    if split in ['train', 'val', 'test']:
+        return init_transform_dict()[split]
+    else:
+        raise ValueError('Split {} not supported.'.format(split))
 
 KEYBOARD_BUTTON_MAPPING = {
     "key.keyboard.escape" :"ESC",
@@ -177,6 +220,7 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
         # super().__init__(*args, **kwargs)
          super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
          self.total_num_frames = total_num_frames
+         self.transforms = self.get_transforms()
         
 
     def _load_metadata(self):
@@ -312,184 +356,28 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
         # exit()
     def __len__(self):
         return len(self.metadata)
+    
+    @lru_cache(maxsize=None)
+    def __getitem__(self, index):
 
-    # def _get_video_path(self, sample):
-    #     abs_path = sample["video_path"]
-    #     BASE_DIR = "/home/nikepupu/dataset/minecraftdata/downloaded"
-    #     rel_path = abs_path.replace(BASE_DIR, "")
-    #     return abs_path, rel_path
+        ann = self.metadata.iloc[index]
 
-    # def _get_caption(self, sample):
-        
-    #     # text = "Actions:\n"
-    #     # for action in sample["actions"]:
-    #     #     # text += str(json_action_to_env_action(action)) + '\n'
-    #     #     text_actions = convert_to_text(json_action_to_env_action(action)[0]) + '\n'
-    #     #     text += text_actions
-    #     # # print(text)
-    #     # # exit()
-    #     # return text
-    #     # print(sample["text"])
-    #     return sample["text"]
+        video_path = ann["video"]
+        start_frame = ann.get("start_frame", 0)
+        end_frame = ann.get("end_frame", -1)
 
-    # def _get_video_lens(self):
-    #     lens = []
-    #     for _, row in self.metadata.iterrows():
-    #         lens.append(row["stop"] - row["fix_start"])
-    #     return lens
+        video = self._load_video(video_path, start_frame, end_frame)
+        video = self.transforms(video)
+        caption = self.text_processor(ann["caption"])
 
-
-class MinecraftVidEvalDataset(TrioVideoCaptionDataset):
-    """
-    MinecraftVid Dataset.
-    Assumes MinecraftVid data is structured as follows.
-    minecraft/
-           
-        1.mp4           (videoid.mp4)
-        1.jsonl
-        ...
-
-    """
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
-        # use_fixed_start=True means we use the start time of the segment as the start time of the video
-        # super().__init__(*args, **kwargs)
-         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
-         self.total_num_frames = total_num_frames
-        
-
-    def _load_metadata(self):
-        self.metadata_dir = '/home/nikepupu/dataset/minecraftdata/test'
-        self.video_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.mp4')])
-        self.metadata_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.jsonl')])
-
-        data = {
-            "video": [],
-            "start_frame": [],
-            "end_frame": [],
-            "actions": [],
-            #"text": "For this new task we have given you 20 minutes to craft a diamond pickaxe. We ask that you do not try to search for villages or other ways of getting diamonds, but if you are spawned in view of one, or happen to fall into a cave structure feel free to explore it for diamonds. If 20 min is not enough that is OK. It will happen on some seeds because of bad luck. Please do not use glitches to find the diamonds."
-            # "text": [],
-            "caption": []
+        input_text = self._get_next_prompt() # Inherited from CaptionDataset
+        # print('video: ', video.shape)
+        # "image_id" is kept to stay compatible with the COCO evaluation format
+        return {
+            "video": video,
+            "text_input": input_text, # Input prompt
+            "text_output": caption, # Correct caption
         }
-
-        # chunk_size_seconds = 0.5
-        # fps = 20  # assuming 20FPS
-        chuck_size_frames = self.total_num_frames
-
-        for video_file, metadata_file in zip(self.video_files, self.metadata_files):
-            video_path = os.path.join(self.metadata_dir, video_file)
-            metadata_path = os.path.join(self.metadata_dir, metadata_file)
-
-            # Get video duration to determine how many chunks are needed
-            duration_s, fps, total_frames = get_video_duration(video_path)
-            if not duration_s:
-                continue
-            num_chunks = int(total_frames // chuck_size_frames) #+ (1 if total_frames % chuck_size_frames > 0 else 0)
-
-            # Load metadata
-            # with open(metadata_path, 'r') as f:
-            #     metadata = [json.loads(line) for line in f]
-            try:
-                with open(metadata_path) as json_file:
-                    json_lines = json_file.readlines()
-                    metadata = "[" + ",".join(json_lines) + "]"
-                    metadata = json.loads(metadata)   
-            except:
-                continue
-                
-            attack_is_stuck = False
-            last_hotbar = 0
-            actions = []
-            for i in range(len(metadata)):
-                
-                step_data = metadata[i]
-
-                if i == 0:
-                    # Check if attack will be stuck down
-                    if step_data["mouse"]["newButtons"] == [0]:
-                        attack_is_stuck = True
-                elif attack_is_stuck:
-                    # Check if we press attack down, then it might not be stuck
-                    if 0 in step_data["mouse"]["newButtons"]:
-                        attack_is_stuck = False
-                # If still stuck, remove the action
-                if attack_is_stuck:
-                    step_data["mouse"]["buttons"] = [button for button in step_data["mouse"]["buttons"] if button != 0]
-
-                action, is_null_action = json_action_to_env_action(step_data)
-
-                # Update hotbar selection
-                current_hotbar = step_data["hotbar"]
-                if current_hotbar != last_hotbar:
-                    action["hotbar.{}".format(current_hotbar + 1)] = 1
-                last_hotbar = current_hotbar
-                actions.append(action)
-
-            # Append video path and metadata in chunks
-            for i in range(num_chunks):
-                data["video"].append(video_path)
-                start_frame = i * chuck_size_frames
-                stop_frame = min((i + 1) * chuck_size_frames, total_frames) 
-                if start_frame == stop_frame:
-                    continue
-                
-                data["start_frame"].append(start_frame)
-                data['end_frame'].append(stop_frame)
-
-                
-                
-                # Assuming 20 FPS, get actions corresponding to the time chunk
-                start_frame, stop_frame = int(start_frame ), int(stop_frame)
-                tmp = actions[start_frame:stop_frame]
-                if isinstance(tmp, list):
-                    data["actions"].append(actions[start_frame:stop_frame])
-                elif isinstance(tmp, str):
-                    data["actions"].append([actions[start_frame:stop_frame]])
-                
-                
-                all_actions = []
-                captions = ""
-                for idx , action in enumerate(data["actions"][-1]):
-                    text_actions = convert_to_text(action)
-                    if text_actions:
-                        captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
-                    else:
-                        captions += f"frame {idx}:  No action\n" 
-
-                if captions:
-                    data["caption"].append(captions)
-                else:
-                    data["caption"].append("No action in the video")
-                    
-                # print('all actions: ', all_actions)
-                
-                # for idx , action in enumerate(data["actions"][-1]):
-                #     text_actions = convert_to_text(action)
-                #     all_actions.extend(text_actions)
-                # if all_actions:
-                #     text_action = top_k_common_items(all_actions, 3)
-                #     text_actions = 'Action: ' + ' '.join(text_action) + '\n'
-                #     data["caption"].append(text_actions)
-                # else:
-                #     data["caption"].append("No action")
-                
-
-        # if self.split == 'val':
-        #     random.seed(0)
-        #     sampled_numbers = list(random.sample(range(0, 100), 30))
-            
-        #     data["video_path"] = [data["video_path"][i] for i in sampled_numbers]
-        #     data["fix_start"] = [data["fix_start"][i] for i in sampled_numbers]
-        #     data["stop"] = [data["stop"][i] for i in sampled_numbers]
-        #     data["actions"] = [data["actions"][i] for i in sampled_numbers]
-        #     data["text"] = [data["text"][i] for i in sampled_numbers]
-      
-
-        self.metadata = pd.DataFrame(data)
-        # print(self.metadata)
-        # exit()
-    def __len__(self):
-        return len(self.metadata)
 
     # def _get_video_path(self, sample):
     #     abs_path = sample["video_path"]

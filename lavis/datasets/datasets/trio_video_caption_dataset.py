@@ -16,7 +16,6 @@ from abc import abstractmethod
 from torchvision import transforms
 from PIL import Image
 
-
 decord.bridge.set_bridge('torch')
 
 

@@ -7,6 +7,10 @@
 
 import json
 import os
+import torch
+import matplotlib.pyplot as plt
+from PIL import Image
+import numpy as np
 
 from lavis.common.dist_utils import main_process
 from lavis.common.registry import registry
@@ -22,11 +26,23 @@ class VideoCaptionTask(BaseTask):
         super().__init__()
     
     def evaluation(self, model, data_loader, cuda_enabled=True):
+        def show_image(image, title=''):
+            # imagenet_mean = np.array([0.485, 0.456, 0.406])
+            # imagenet_std = np.array([0.229, 0.224, 0.225])
+            imagenet_mean = np.array([0.48145466, 0.4578275, 0.40821073 ])
+            imagenet_std =  np.array([0.26862954, 0.26130258, 0.27577711])
+            # image is [H, W, 3]
+            assert image.shape[2] == 3
+            plt.imshow(torch.clip((image * imagenet_std + imagenet_mean) * 255, 0, 255).int())
+            plt.title(title, fontsize=16)
+            plt.axis('off')
+            return
+
         metric_logger = MetricLogger(delimiter="  ")
         header = "Evaluation"
         # TODO make it configurable
         print_freq = 50
-
+        
         results = []
         # import pdb; pdb.set_trace()
         # for samples in metric_logger.log_every(data_loader, print_freq, header):
@@ -42,6 +58,20 @@ class VideoCaptionTask(BaseTask):
             samples = next(data_loader)
             samples = prepare_sample(samples, cuda_enabled=cuda_enabled)
             eval_output = self.valid_step(model=model, samples=samples)
+            pred  = eval_output[0]["pred"]
+            image = eval_output[0]["image"]
+          
+            pred = pred.squeeze_(0)
+            # print(pred.shape)
+            y = model.unpatchify(pred)
+            # y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
+            # print(y[0][0].shape)
+            # y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
+            y = torch.einsum('nchw->nhwc', y).detach().cpu()
+            show_image(y[0], "reconstruction")
+            plt.show()
+            
+            exit()
        
             results.extend(eval_output)
 
@@ -58,4 +88,4 @@ class VideoCaptionTask(BaseTask):
             if "loss" in k or "pred" in k or "image" in k:
                 loss_dict[k] = v
 
-        return output["loss"], loss_dict
+        return output, loss_dict

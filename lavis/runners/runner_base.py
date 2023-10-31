@@ -375,9 +375,9 @@ class RunnerBase:
                 for split_name in self.valid_splits:
                     logging.info("Evaluating on {}.".format(split_name))
 
-                    val_log = self.eval_epoch(
-                        split_name=split_name, cur_epoch=cur_epoch
-                    )
+                    # val_log = self.eval_epoch(
+                    #     split_name=split_name, cur_epoch=cur_epoch
+                    # )
                     # import pdb; pdb.set_trace()
                     # if val_log is not None:
                     #     if is_main_process():
@@ -393,7 +393,7 @@ class RunnerBase:
 
                     #         val_log.update({"best_epoch": best_epoch})
                     #         self.log_stats(val_log, split_name)
-                    if cur_epoch % 5 == 0:
+                    if cur_epoch % 20 == 0:
                         self._save_checkpoint(cur_epoch, is_best=False)
 
             else:
@@ -573,10 +573,10 @@ class RunnerBase:
             k: v.requires_grad for (k, v) in model_no_ddp.named_parameters()
         }
         state_dict = model_no_ddp.state_dict()
-        for k in list(state_dict.keys()):
-            if k in param_grad_dic.keys() and not param_grad_dic[k]:
-                # delete parameters that do not require gradient
-                del state_dict[k]
+        # for k in list(state_dict.keys()):
+        #     if k in param_grad_dic.keys() and not param_grad_dic[k]:
+        #         # delete parameters that do not require gradient
+        #         del state_dict[k]
 
         save_obj = {
             "model": state_dict,

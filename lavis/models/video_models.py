@@ -92,21 +92,38 @@ class PatchDropout(torch.nn.Module):
             raise NotImplementedError(f"PatchDropout does not support {self.sampling} sampling")
             return None
 
-    # def uniform_mask(self, x):
-    #     """
-    #     Returns an id-mask using uniform sampling
-    #     """
-    #     N, L, D = x.shape
-    #     _L = L -1 # patch lenght (without CLS)
+    def uniform_mask(self, x):
+        """
+        Returns an id-mask using uniform sampling
+        """
+        N, L, D = x.shape
+        _L = L -1 # patch lenght (without CLS)
         
-    #     keep = self.n_keep
-    #     patch_mask = torch.rand(N, _L, device=x.device)
-    #     patch_mask = torch.argsort(patch_mask, dim=1) + 1
-    #     patch_mask = patch_mask[:, :keep]
-    #     if not self.token_shuffling:
-    #         patch_mask = patch_mask.sort(1)[0]
+        # keep = self.n_keep
+        # patch_mask = torch.rand(N, _L, device=x.device)
+        # patch_mask = torch.argsort(patch_mask, dim=1) + 1
+        # patch_mask = patch_mask[:, :keep]
+        # if not self.token_shuffling:
+        #     patch_mask = patch_mask.sort(1)[0]
+
+        len_keep = self.n_keep
+        noise = torch.rand(N, _L, device=x.device)  # noise in [0, 1]
         
-    #     return patch_mask
+        # sort noise for each sample
+        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        # keep the first subset
+        ids_keep = ids_shuffle[:, :len_keep]
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+
+        # generate the binary mask: 0 is keep, 1 is remove
+        mask = torch.ones([N, _L], device=x.device)
+        mask[:, :len_keep] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore)
+        
+        return ids_keep, mask, ids_restore
     
     def tubelet_uniform_mask(self, x):
         """
@@ -559,12 +576,13 @@ class SpaceTimeTransformer(nn.Module):
         x = x + total_pos_embed[:, :curr_patches]
         x, mask, restore_mask = self.pos_drop(x)
         x = self.norm_pre(x)
-        if self.training:
-            n = self.patches_per_frame_after_dropout # account for patch dropout
-        else:
-            n = self.patches_per_frame # use all patches at inference
+        # if self.training:
+        n = self.patches_per_frame_after_dropout # account for patch dropout
+        # else:
+            # n = self.patches_per_frame # use all patches at inference
 
         f = num_frames
+        # import pdb; pdb.set_trace()
         for blk in self.blocks:
             x = blk(x, self.einops_from_space, self.einops_to_space, self.einops_from_time,
                     self.einops_to_time,
