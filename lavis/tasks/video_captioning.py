@@ -61,17 +61,25 @@ class VideoCaptionTask(BaseTask):
             pred  = eval_output[0]["pred"]
             image = eval_output[0]["image"]
           
-            pred = pred.squeeze_(0)
-            # print(pred.shape)
+
+            # y = model.unpatchify(pred)
+            # y = torch.einsum('nchw->nhwc', y).detach().cpu()
+            # show_image(y[0], "reconstruction")
+            # plt.show()
+            # yy = torch.einsum('nchw->nhwc', image).detach().cpu()
+            # show_image(yy[0], "original")
+            # plt.show()
+
+
             y = model.unpatchify(pred)
-            # y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
-            # print(y[0][0].shape)
-            # y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
-            y = torch.einsum('nchw->nhwc', y).detach().cpu()
-            show_image(y[0], "reconstruction")
+            y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
+            show_image(y[0][0], "reconstruction")
+            plt.show()
+            yy = torch.einsum('nfchw->nfhwc', image).detach().cpu()
+            show_image(yy[0][0], "original")
             plt.show()
             
-            exit()
+           
        
             results.extend(eval_output)
 

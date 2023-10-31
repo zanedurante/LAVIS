@@ -253,15 +253,16 @@ class TrioT5(Blip2Base):
         else:
             raise ValueError("No image or video input found in input dict.")
         with self.maybe_autocast():
-            features, mask, restore_mask =   self.visual_encoder(image)
-            
+            features, mask, ids_restore =   self.visual_encoder(image)
             image_embeds = self.ln_vision(features)
+            pred = self.forward_decoder(image_embeds, ids_restore)
+            mae_loss = self.forward_loss(image, pred, mask)
+
         # uncomment following lines for contrastive learning
         # image_embeds = self.image_norm(image_embeds)[:, 0] # self.image_norm is nn.LayerNorm(eps=1e-5, elementwise_affine=True)
         # image_proj_embed = self.image_proj(image_embeds) # nn.Linear
         # compare with text embeddings to compute contrastive loss
-        pred = self.forward_decoder(image_embeds, restore_mask)
-        mae_loss = self.forward_loss(image, pred, mask)
+        
 
         # image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 

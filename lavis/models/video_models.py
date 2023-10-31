@@ -463,7 +463,7 @@ class SpaceTimeTransformer(nn.Module):
         else:
             self.temporal_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
 
-        self.pos_drop = PatchDropout(p=patch_drop_rate, sampling='tubelet_uniform', tokens_per_frame=self.patches_per_frame, num_frames=num_frames)
+        # self.pos_drop = PatchDropout(p=patch_drop_rate, sampling='tubelet_uniform', tokens_per_frame=self.patches_per_frame, num_frames=num_frames)
         
         if clip:
             self.norm_pre = norm_layer(embed_dim)
@@ -558,7 +558,7 @@ class SpaceTimeTransformer(nn.Module):
 
         BF = x.shape[0]
         cls_tokens = self.cls_token.expand(BF, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        x = torch.cat((cls_tokens, x), dim=1)
+        # x = torch.cat((cls_tokens, x), dim=1)
 
         # positional embed needs to be tiled for each frame (this does [1,2,3] --> [1,2,3,1,2,3]...)
         cls_embed = self.pos_embed[:, 0, :].unsqueeze(1)
@@ -572,9 +572,48 @@ class SpaceTimeTransformer(nn.Module):
         total_pos_embed = tile_pos_embed + tile_temporal_embed
         total_pos_embed = torch.cat([cls_embed, total_pos_embed], dim=1)
 
-        curr_patches = x.shape[1]
-        x = x + total_pos_embed[:, :curr_patches]
-        x, mask, restore_mask = self.pos_drop(x)
+        # curr_patches = x.shape[1]
+        # x = x + total_pos_embed[:, :curr_patches]
+
+        def random_masking(x, mask_ratio):
+            """
+            Perform per-sample random masking by per-sample shuffling.
+            Per-sample shuffling is done by argsort random noise.
+            x: [N, L, D], sequence
+            """
+            N, L, D = x.shape  # batch, length, dim
+            _L = L 
+            len_keep = int(_L * (1 - mask_ratio))
+            
+            noise = torch.rand(N, _L, device=x.device)  # noise in [0, 1]
+            
+            # sort noise for each sample
+            ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+            ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+            # keep the first subset
+            ids_keep = ids_shuffle[:, :len_keep]
+            x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+
+            # generate the binary mask: 0 is keep, 1 is remove
+            mask = torch.ones([N, _L], device=x.device)
+            mask[:, :len_keep] = 0
+            # unshuffle to get the binary mask
+            mask = torch.gather(mask, dim=1, index=ids_restore)
+
+            return x_masked, mask, ids_restore
+        
+        # add pos embed w/o cls token
+        x = x + total_pos_embed[:, 1:, :]
+        # x, mask, restore_mask = self.pos_drop(x)
+        # print('before: ', x.shape)
+        x, mask, ids_restore = random_masking(x, self.patch_drop_rate)
+        # print('after: ', x.shape)
+        cls_token = cls_tokens + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+
+
         x = self.norm_pre(x)
         # if self.training:
         n = self.patches_per_frame_after_dropout # account for patch dropout
@@ -591,7 +630,7 @@ class SpaceTimeTransformer(nn.Module):
         #x = self.norm(x)[:, 0]
         #x = self.pre_logits(x)
 
-        return x, mask, restore_mask
+        return x, mask, ids_restore
 
     def forward(self, x):
         # convert image to video format before sending in

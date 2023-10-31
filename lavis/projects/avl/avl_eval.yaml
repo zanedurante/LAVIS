@@ -4,7 +4,7 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: MaskedAutoencoderViT
+  arch: trio_t5
 
   model_type: flant5xl
   load_finetuned: False
@@ -32,14 +32,13 @@ run:
   task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 1.5e-4
+  init_lr: 3.0e-6
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 800
-  batch_size_train: 2
-  batch_size_eval: 2
-  num_workers: 2
-  accum_grad_iters: 16
+  batch_size_train: 1
+  batch_size_eval: 1
+  num_workers: 1
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -53,7 +52,7 @@ run:
   log: wandb
 
   amp: False
-  resume_ckpt_path: null #"/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030194/checkpoint_15.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231031025/checkpoint_20.pth"
 
   evaluate: False 
   train_splits: ["train"]
