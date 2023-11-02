@@ -49,10 +49,9 @@ run:
   output_dir: "output/Trio/Minecraft_Eval"
 
   # logging
-  log: wandb
 
   amp: False
-  resume_ckpt_path: "/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030230/checkpoint_80.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231101185/checkpoint_10.pth"
 
   evaluate: False 
   train_splits: ["train"]

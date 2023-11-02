@@ -62,7 +62,7 @@ class VideoCaptionTask(BaseTask):
             image = eval_output[0]["image"]
           
 
-            # y = model.unpatchify(pred)
+            # y = model.visual_encoder.unpatchify(pred)
             # y = torch.einsum('nchw->nhwc', y).detach().cpu()
             # show_image(y[0], "reconstruction")
             # plt.show()
@@ -71,7 +71,7 @@ class VideoCaptionTask(BaseTask):
             # plt.show()
 
 
-            y = model.unpatchify(pred)
+            y = model.visual_encoder.unpatchify(pred)
             y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
             show_image(y[0][0], "reconstruction")
             plt.show()

@@ -204,7 +204,7 @@ class MaskedAutoencoderViT(BaseModel):
     def forward_encoder(self, x, mask_ratio):
         # embed patches
         x = self.patch_embed(x)
-
+        
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
 

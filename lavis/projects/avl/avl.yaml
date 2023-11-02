@@ -32,10 +32,10 @@ run:
   task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 1.0e-4
-  min_lr: 1.0e-6
+  init_lr: 1.50e-4
+  min_lr: 3.0e-6
   weight_decay: 0.05
-  max_epoch: 800
+  max_epoch: 241
   batch_size_train: 32
   batch_size_eval: 32
   num_workers: 16
