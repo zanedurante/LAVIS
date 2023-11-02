@@ -222,7 +222,7 @@ class TrioT5(Blip2Base):
             # loss = outputs.loss + mae_loss * 3
        
 
-        return {"loss": mae_loss, "pred": pred, "image": image}
+        return {"loss": mae_loss, "pred": pred, "image": image, 'mask': mask}
 
     # def prepare_few_shot_embeds(self, samples):
     #     this_n_fs = random.choices(

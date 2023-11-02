@@ -10,12 +10,12 @@ model:
   load_finetuned: False
   vit_model: "clip_b"
   random_init_qformer: True
-  num_frames: 1
+  num_frames: 4
 
 datasets:
   minecraft: # name of the dataset builder
     data_type: videos
-    total_num_frames: 1
+    total_num_frames: 4
     num_skip_frames: 0
     vis_processor:
         train:
@@ -51,7 +51,7 @@ run:
   # logging
 
   amp: False
-  resume_ckpt_path: "/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231101185/checkpoint_40.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231102051/checkpoint_130.pth"
 
   evaluate: False 
   train_splits: ["train"]

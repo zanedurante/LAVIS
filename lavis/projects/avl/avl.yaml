@@ -10,12 +10,12 @@ model:
   load_finetuned: False
   vit_model: "clip_b"
   random_init_qformer: True
-  num_frames: 1
+  num_frames: 4
 
 datasets:
   minecraft: # name of the dataset builder
     data_type: videos
-    total_num_frames: 1
+    total_num_frames: 4
     num_skip_frames: 0
     vis_processor:
         train:
@@ -35,9 +35,9 @@ run:
   init_lr: 1.50e-4
   min_lr: 3.0e-6
   weight_decay: 0.05
-  max_epoch: 241
-  batch_size_train: 32
-  batch_size_eval: 32
+  max_epoch: 201
+  batch_size_train: 16
+  batch_size_eval: 16
   num_workers: 16
   # accum_grad_iters: 32
 

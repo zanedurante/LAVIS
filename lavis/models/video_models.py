@@ -401,7 +401,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.5,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.8,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -456,9 +456,12 @@ class SpaceTimeTransformer(nn.Module):
         self.patches_per_frame_after_dropout = int(self.patches_per_frame * (1 - self.patch_drop_rate))
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(
-            torch.zeros(1, self.patches_per_frame + 1,
-                        embed_dim))  # remember to take pos_embed[1:] for tiling over time
+        # self.pos_embed = nn.Parameter(
+        #     torch.zeros(1, self.patches_per_frame + 1,
+        #                 embed_dim))  # remember to take pos_embed[1:] for tiling over time
+
+        self.pos_embed = nn.Parameter( torch.zeros((1, num_patches + 1, embed_dim)), requires_grad=False ) 
+
         if freeze_first_frame:
             self.first_frame_temporal_embed = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=False)
             self.temporal_embed = nn.Parameter(torch.zeros(1, num_frames - 1, embed_dim))
@@ -503,18 +506,33 @@ class SpaceTimeTransformer(nn.Module):
             self.pre_logits = nn.Identity()
         # self.visual_encoder = self.blocks
         # --------------------------------------------------------------------------
+          # MAE encoder specifics
+        # self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim)
+        
+
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        # self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
+
+       
 
         # --------------------------------------------------------------------------
         
         embed_dim = self.embed_dim
         depth = 24
         num_heads = 16
-        decoder_embed_dim = 512
+        decoder_embed_dim = 768
         decoder_depth = 8
         decoder_num_heads = 16
         mlp_ratio = 4.
         norm_layer = nn.LayerNorm
         norm_pix_loss = False
+
+        num_patches = self.patch_embed.num_patches
+
+        # self.blocks = nn.ModuleList([
+        #     Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True,  norm_layer=norm_layer)
+        #     for i in range(depth)])
+        # self.norm = norm_layer(embed_dim)
 
         # MAE decoder specifics
         
@@ -522,11 +540,13 @@ class SpaceTimeTransformer(nn.Module):
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim))  # fixed sin-cos embedding
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False )  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
             Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(decoder_depth)])
+        
+        # self.decoder_temporal_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
@@ -539,15 +559,15 @@ class SpaceTimeTransformer(nn.Module):
     def initialize_weights(self):
         # initialization
         # initialize (and freeze) pos_embed by sin-cos embedding
-        # pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
-        # self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        # decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
-        # self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
+        decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
+        self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
-        w = self.patch_embed.proj.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        # w = self.patch_embed.proj.weight.data
+        # torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=.02)
@@ -662,7 +682,22 @@ class SpaceTimeTransformer(nn.Module):
         x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
         x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
 
+        # =====================
+        # cls_embed = self.decoder_pos_embed[:, 0, :].unsqueeze(1)
+        # tile_pos_embed = self.decoder_pos_embed[:, 1:, :].repeat(1, self.num_frames, 1)
+        # # temporal embed needs to be repeated within each frame (this does [1,2,3] --> [1,1,1,2,2,2,3,3,3]...)
+        # # if self.freeze_first_frame:
+        # #     temporal_embed = torch.cat([self.first_frame_temporal_embed, self.decoder_temporal_embed], dim=1)
+        # # else:
+        # temporal_embed = self.decoder_temporal_embed
+        # tile_temporal_embed = temporal_embed.repeat_interleave(self.patches_per_frame, 1)
+        # total_pos_embed = tile_pos_embed + tile_temporal_embed
+        # total_pos_embed = torch.cat([cls_embed, total_pos_embed], dim=1)
+
+        # =====================
+        # import pdb; pdb.set_trace()
         # add pos embed
+        # x = x + total_pos_embed
         x = x + self.decoder_pos_embed
 
         # apply Transformer blocks
@@ -730,22 +765,23 @@ class SpaceTimeTransformer(nn.Module):
         # x = torch.cat((cls_tokens, x), dim=1)
 
         # positional embed needs to be tiled for each frame (this does [1,2,3] --> [1,2,3,1,2,3]...)
-        cls_embed = self.pos_embed[:, 0, :].unsqueeze(1)
-        tile_pos_embed = self.pos_embed[:, 1:, :].repeat(1, self.num_frames, 1)
-        # temporal embed needs to be repeated within each frame (this does [1,2,3] --> [1,1,1,2,2,2,3,3,3]...)
-        if self.freeze_first_frame:
-            temporal_embed = torch.cat([self.first_frame_temporal_embed, self.temporal_embed], dim=1)
-        else:
-            temporal_embed = self.temporal_embed
-        tile_temporal_embed = temporal_embed.repeat_interleave(self.patches_per_frame, 1)
-        total_pos_embed = tile_pos_embed + tile_temporal_embed
-        total_pos_embed = torch.cat([cls_embed, total_pos_embed], dim=1)
+        # cls_embed = self.pos_embed[:, 0, :].unsqueeze(1)
+        # tile_pos_embed = self.pos_embed[:, 1:, :].repeat(1, self.num_frames, 1)
+        # # temporal embed needs to be repeated within each frame (this does [1,2,3] --> [1,1,1,2,2,2,3,3,3]...)
+        # if self.freeze_first_frame:
+        #     temporal_embed = torch.cat([self.first_frame_temporal_embed, self.temporal_embed], dim=1)
+        # else:
+        #     temporal_embed = self.temporal_embed
+        # tile_temporal_embed = temporal_embed.repeat_interleave(self.patches_per_frame, 1)
+        # total_pos_embed = tile_pos_embed + tile_temporal_embed
+        # total_pos_embed = torch.cat([cls_embed, total_pos_embed], dim=1)
 
         # curr_patches = x.shape[1]
         # x = x + total_pos_embed[:, :curr_patches]
         
         # add pos embed w/o cls token
-        x = x + total_pos_embed[:, 1:, :]
+        # x = x + total_pos_embed[:, 1:, :]
+        x = x + self.pos_embed[:, 1:, :]
         
         # x = x + self.pos_embed[:, 1:, :]
         # x, mask, restore_mask = self.pos_drop(x)
@@ -759,8 +795,12 @@ class SpaceTimeTransformer(nn.Module):
         # print('cls: ', x.shape)
         # exit()
 
+        # apply Transformer blocks
+        # for blk in self.blocks:
+        #     x = blk(x)
 
-        x = self.norm_pre(x)
+
+        # x = self.norm_pre(x)
         # if self.training:
         n = self.patches_per_frame_after_dropout # account for patch dropout
         # else:
@@ -794,19 +834,19 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
         freeze_first_frame=False,
         clip=True,
     )
-    model.head = nn.Identity()
-    model.pre_logits = nn.Identity()
-    ftr_dim = model.embed_dim
-    # init with weights from eva_vit_g
-    vit_model = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
+    # model.head = nn.Identity()
+    # model.pre_logits = nn.Identity()
+    # ftr_dim = model.embed_dim
+    # # init with weights from eva_vit_g
+    # vit_model = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
 
-    vit_checkpoint = vit_model.state_dict()
-    ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
+    # vit_checkpoint = vit_model.state_dict()
+    # ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
 
-    nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
-    for block in model.blocks:
-        nn.init.ones_(block.norm3.weight)
-        nn.init.zeros_(block.norm3.bias)
+    # nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
+    # for block in model.blocks:
+    #     nn.init.ones_(block.norm3.weight)
+    #     nn.init.zeros_(block.norm3.bias)
     
     # print("ckpts_vals:", ckpt_vals)
     # ckpts_vals: _IncompatibleKeys(missing_keys=['temporal_embed', 'patch_embed.proj.bias', 'blocks.0.timeattn.qkv.weight', 'blocks.0.timeattn.qkv.bias', 'blocks.0.timeattn.proj.weight', 'blocks.0.timeattn.proj.bias', 'blocks.0.norm3.weight', 'blocks.0.norm3.bias', 'blocks.1.timeattn.qkv.weight', 'blocks.1.timeattn.qkv.bias', 'blocks.1.timeattn.proj.weight', 'blocks.1.timeattn.proj.bias', 'blocks.1.norm3.weight', 'blocks.1.norm3.bias', 'blocks.2.timeattn.qkv.weight', 'blocks.2.timeattn.qkv.bias', 'blocks.2.timeattn.proj.weight', 'blocks.2.timeattn.proj.bias', 'blocks.2.norm3.weight', 'blocks.2.norm3.bias', 'blocks.3.timeattn.qkv.weight', 'blocks.3.timeattn.qkv.bias', 'blocks.3.timeattn.proj.weight', 'blocks.3.timeattn.proj.bias', 'blocks.3.norm3.weight', 'blocks.3.norm3.bias', 'blocks.4.timeattn.qkv.weight', 'blocks.4.timeattn.qkv.bias', 'blocks.4.timeattn.proj.weight', 'blocks.4.timeattn.proj.bias', 'blocks.4.norm3.weight', 'blocks.4.norm3.bias', 'blocks.5.timeattn.qkv.weight', 'blocks.5.timeattn.qkv.bias', 'blocks.5.timeattn.proj.weight', 'blocks.5.timeattn.proj.bias', 'blocks.5.norm3.weight', 'blocks.5.norm3.bias', 'blocks.6.timeattn.qkv.weight', 'blocks.6.timeattn.qkv.bias', 'blocks.6.timeattn.proj.weight', 'blocks.6.timeattn.proj.bias', 'blocks.6.norm3.weight', 'blocks.6.norm3.bias', 'blocks.7.timeattn.qkv.weight', 'blocks.7.timeattn.qkv.bias', 'blocks.7.timeattn.proj.weight', 'blocks.7.timeattn.proj.bias', 'blocks.7.norm3.weight', 'blocks.7.norm3.bias', 'blocks.8.timeattn.qkv.weight', 'blocks.8.timeattn.qkv.bias', 'blocks.8.timeattn.proj.weight', 'blocks.8.timeattn.proj.bias', 'blocks.8.norm3.weight', 'blocks.8.norm3.bias', 'blocks.9.timeattn.qkv.weight', 'blocks.9.timeattn.qkv.bias', 'blocks.9.timeattn.proj.weight', 'blocks.9.timeattn.proj.bias', 'blocks.9.norm3.weight', 'blocks.9.norm3.bias', 'blocks.10.timeattn.qkv.weight', 'blocks.10.timeattn.qkv.bias', 'blocks.10.timeattn.proj.weight', 'blocks.10.timeattn.proj.bias', 'blocks.10.norm3.weight', 'blocks.10.norm3.bias', 'blocks.11.timeattn.qkv.weight', 'blocks.11.timeattn.qkv.bias', 'blocks.11.timeattn.proj.weight', 'blocks.11.timeattn.proj.bias', 'blocks.11.norm3.weight', 'blocks.11.norm3.bias'], unexpected_keys=['head.weight', 'head.bias'])
