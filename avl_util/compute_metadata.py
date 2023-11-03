@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 KEYBOARD_BUTTON_MAPPING = {
     "key.keyboard.escape" :"ESC",
     "key.keyboard.s" :"back",
@@ -136,9 +137,106 @@ def json_action_to_env_action(json_action):
 
     return env_action, is_null_action
 
-def load_metadata(chuck_size_frames=4, metadata_dir= './mnt/dataset_mnt/'):
-    files = os.listdir(metadata_dir)
-    video_files = sorted([f for f in files  if f.endswith('.mp4')])
+def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
+    video_path = os.path.join(metadata_dir, video_file)
+    metadata_path = os.path.join(metadata_dir, metadata_file)
+    data_chunk = {
+        "video": [],
+        "start_frame": [],
+        "end_frame": [],
+        "actions": [],
+        "caption": []
+    }
+
+    try:
+        with open(metadata_path) as json_file:
+            json_lines = json_file.readlines()
+            metadata = "[" + ",".join(json_lines) + "]"
+            metadata = json.loads(metadata)   
+    except:
+        return None  # Return None if failed to load metadata
+
+    # ... rest of the code to process the metadata and fill the data_chunk dictionary ...
+        
+    attack_is_stuck = False
+    last_hotbar = 0
+    actions = []
+    duration_s, fps, total_frames = len(metadata) / 20.0, 20, len(metadata)
+    num_chunks = int(total_frames // chunk_size_frames) #+ (1 if total_frames % chuck_size_frames > 0 else 0)
+
+    for i in range(len(metadata)):
+        
+        step_data = metadata[i]
+
+        if i == 0:
+            # Check if attack will be stuck down
+            if step_data["mouse"]["newButtons"] == [0]:
+                attack_is_stuck = True
+        elif attack_is_stuck:
+            # Check if we press attack down, then it might not be stuck
+            if 0 in step_data["mouse"]["newButtons"]:
+                attack_is_stuck = False
+        # If still stuck, remove the action
+        if attack_is_stuck:
+            step_data["mouse"]["buttons"] = [button for button in step_data["mouse"]["buttons"] if button != 0]
+
+        action, is_null_action = json_action_to_env_action(step_data)
+
+        # Update hotbar selection
+        if 'hotbar' in step_data:
+            current_hotbar = step_data["hotbar"]
+            if current_hotbar != last_hotbar:
+                action["hotbar.{}".format(current_hotbar + 1)] = 1
+        last_hotbar = current_hotbar
+        actions.append(action)
+
+    # Append video path and metadata in chunks
+    for i in range(num_chunks):
+        data_chunk["video"].append(video_path)
+        start_frame = i * chunk_size_frames
+        stop_frame = min((i + 1) * chunk_size_frames, total_frames) 
+        if start_frame == stop_frame:
+            continue
+        
+        data_chunk["start_frame"].append(start_frame)
+        data_chunk['end_frame'].append(stop_frame)
+
+        
+        
+        # Assuming 20 FPS, get actions corresponding to the time chunk
+        start_frame, stop_frame = int(start_frame ), int(stop_frame)
+        tmp = actions[start_frame:stop_frame]
+
+        
+        if isinstance(tmp, list):
+            data_chunk["actions"].append(actions[start_frame:stop_frame])
+        elif isinstance(tmp, str):
+            data_chunk["actions"].append([actions[start_frame:stop_frame]])
+            tmp = [tmp]
+        
+        
+        
+        all_actions = []
+        captions = ""
+        for idx , action in enumerate(tmp):
+            text_actions = convert_to_text(action)
+            if text_actions:
+                captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
+            else:
+                captions += f"frame {idx}:  No action\n" 
+
+        if captions:
+            data_chunk["caption"].append(captions)
+        else:
+            data_chunk["caption"].append("No action in the video")
+
+    return data_chunk
+
+def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesname='./mnt/all_files.txt'):
+    with open(filesname) as f:
+        files = f.readlines()
+    files = [x.strip() for x in files]
+    video_files = sorted([f for f in files if f.endswith('.mp4')])
     metadata_files = sorted([f for f in files if f.endswith('.jsonl')])
 
     data = {
@@ -146,95 +244,28 @@ def load_metadata(chuck_size_frames=4, metadata_dir= './mnt/dataset_mnt/'):
         "start_frame": [],
         "end_frame": [],
         "actions": [],
-        #"text": "For this new task we have given you 20 minutes to craft a diamond pickaxe. We ask that you do not try to search for villages or other ways of getting diamonds, but if you are spawned in view of one, or happen to fall into a cave structure feel free to explore it for diamonds. If 20 min is not enough that is OK. It will happen on some seeds because of bad luck. Please do not use glitches to find the diamonds."
-        # "text": [],
         "caption": []
     }
 
-    # chunk_size_seconds = 0.5
-    # fps = 20  # assuming 20FPS
+    # Using ThreadPoolExecutor to parallelize file processing
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        # Schedule the processing of each file.
+        futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
+                   for video_file, metadata_file in zip(video_files, metadata_files)]
 
-    for video_file, metadata_file in tqdm(zip(video_files, metadata_files)):
-        video_path = os.path.join(metadata_dir, video_file)
-        metadata_path = os.path.join(metadata_dir, metadata_file)
+        # Progress bar for futures
+        for future in tqdm(as_completed(futures), total=len(futures)):
+            data_chunk = future.result()
+            if data_chunk:
+                data["video"].extend(data_chunk["video"])
+                data["start_frame"].extend(data_chunk["start_frame"])
+                data["end_frame"].extend(data_chunk["end_frame"])
+                data["actions"].extend(data_chunk["actions"])
+                data["caption"].extend(data_chunk["caption"])
+    
+    df = pd.DataFrame(data)
+    df.to_csv(os.path.join(metadata_dir, 'metadata.csv'), index=False)
 
-        try:
-            with open(metadata_path) as json_file:
-                json_lines = json_file.readlines()
-                metadata = "[" + ",".join(json_lines) + "]"
-                metadata = json.loads(metadata)   
-        except:
-            continue
-            
-        attack_is_stuck = False
-        last_hotbar = 0
-        actions = []
-        duration_s, fps, total_frames = len(metadata) / 20.0, 20, len(metadata)
-        num_chunks = int(total_frames // chuck_size_frames) #+ (1 if total_frames % chuck_size_frames > 0 else 0)
-
-        for i in range(len(metadata)):
-            
-            step_data = metadata[i]
-
-            if i == 0:
-                # Check if attack will be stuck down
-                if step_data["mouse"]["newButtons"] == [0]:
-                    attack_is_stuck = True
-            elif attack_is_stuck:
-                # Check if we press attack down, then it might not be stuck
-                if 0 in step_data["mouse"]["newButtons"]:
-                    attack_is_stuck = False
-            # If still stuck, remove the action
-            if attack_is_stuck:
-                step_data["mouse"]["buttons"] = [button for button in step_data["mouse"]["buttons"] if button != 0]
-
-            action, is_null_action = json_action_to_env_action(step_data)
-
-            # Update hotbar selection
-            current_hotbar = step_data["hotbar"]
-            if current_hotbar != last_hotbar:
-                action["hotbar.{}".format(current_hotbar + 1)] = 1
-            last_hotbar = current_hotbar
-            actions.append(action)
-
-        # Append video path and metadata in chunks
-        for i in range(num_chunks):
-            data["video"].append(video_path)
-            start_frame = i * chuck_size_frames
-            stop_frame = min((i + 1) * chuck_size_frames, total_frames) 
-            if start_frame == stop_frame:
-                continue
-            
-            data["start_frame"].append(start_frame)
-            data['end_frame'].append(stop_frame)
-
-            
-            
-            # Assuming 20 FPS, get actions corresponding to the time chunk
-            start_frame, stop_frame = int(start_frame ), int(stop_frame)
-            tmp = actions[start_frame:stop_frame]
-            if isinstance(tmp, list):
-                data["actions"].append(actions[start_frame:stop_frame])
-            elif isinstance(tmp, str):
-                data["actions"].append([actions[start_frame:stop_frame]])
-            
-            
-            all_actions = []
-            captions = ""
-            for idx , action in enumerate(data["actions"][-1]):
-                text_actions = convert_to_text(action)
-                if text_actions:
-                    captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
-                else:
-                    captions += f"frame {idx}:  No action\n" 
-
-            if captions:
-                data["caption"].append(captions)
-            else:
-                data["caption"].append("No action in the video")
-
-    metadata = pd.DataFrame(data)
-    metadata.to_csv( "metadata.csv", index=False)
 
 if __name__ == "__main__":
-    load_metadata(chuck_size_frames=4, metadata_dir= './mnt/datasets_mnt/')
+    load_metadata(chunk_size_frames=4, metadata_dir= './mnt/datasets_mnt/')
