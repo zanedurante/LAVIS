@@ -239,16 +239,17 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     video_files = sorted([f for f in files if f.endswith('.mp4')])
     metadata_files = sorted([f for f in files if f.endswith('.jsonl')])
 
+     # Create dictionaries to map base names to file names for quick lookup
+    video_dict = {os.path.splitext(os.path.basename(f))[0]: f for f in video_files}
+    metadata_dict = {os.path.splitext(os.path.basename(f))[0]: f for f in metadata_files}
+
     paired_files = []
-    for video_file in tqdm(video_files):
-        # Get the base name without extension for the video file
-        video_base_name = os.path.splitext(os.path.basename(video_file))[0]
-        for metadata_file in metadata_files:
-            # Get the base name without extension for the metadata file
-            metadata_base_name = os.path.splitext(os.path.basename(metadata_file))[0]
-            if video_base_name == metadata_base_name:
-                paired_files.append((video_file, metadata_file))
-                break
+    for base_name, video_file in tqdm(video_dict.items()):
+        metadata_file = metadata_dict.get(base_name)
+        if metadata_file:
+            paired_files.append((video_file, metadata_file))
+        else:
+            print(f"Warning: Video file '{video_file}' has no corresponding metadata file with a matching prefix.")
     
     if len(paired_files) != len(video_files):
         print("Warning: Not all video files have corresponding metadata files with matching prefixes.")
