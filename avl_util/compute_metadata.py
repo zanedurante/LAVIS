@@ -239,6 +239,20 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     video_files = sorted([f for f in files if f.endswith('.mp4')])
     metadata_files = sorted([f for f in files if f.endswith('.jsonl')])
 
+    paired_files = []
+    for video_file in video_files:
+        # Get the base name without extension for the video file
+        video_base_name = os.path.splitext(os.path.basename(video_file))[0]
+        for metadata_file in metadata_files:
+            # Get the base name without extension for the metadata file
+            metadata_base_name = os.path.splitext(os.path.basename(metadata_file))[0]
+            if video_base_name == metadata_base_name:
+                paired_files.append((video_file, metadata_file))
+                break
+    
+    if len(paired_files) != len(video_files):
+        print("Warning: Not all video files have corresponding metadata files with matching prefixes.")
+
     data = {
         "video": [],
         "start_frame": [],
@@ -251,7 +265,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
         # Schedule the processing of each file.
         futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
-                   for video_file, metadata_file in zip(video_files, metadata_files)]
+                   for video_file, metadata_file in paired_files]
 
         # Progress bar for futures
         for future in tqdm(as_completed(futures), total=len(futures)):
