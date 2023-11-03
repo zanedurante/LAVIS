@@ -401,7 +401,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.8,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.75,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -452,7 +452,9 @@ class SpaceTimeTransformer(nn.Module):
                 img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim, num_frames=num_frames)
         num_patches = self.patch_embed.num_patches
 
+        
         self.patches_per_frame = num_patches // num_frames
+        # import pdb; pdb.set_trace()
         self.patches_per_frame_after_dropout = int(self.patches_per_frame * (1 - self.patch_drop_rate))
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -540,7 +542,7 @@ class SpaceTimeTransformer(nn.Module):
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False )  # fixed sin-cos embedding
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
             Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
@@ -556,9 +558,20 @@ class SpaceTimeTransformer(nn.Module):
 
         self.initialize_weights()
 
+        # if num_frames > 1, then we perform ViT inflation and initialise time attention to zero so not necessary.
+        # if num_frames == 1:
+        #     self.apply(self._init_weights)
+
+        ## einops transformations
+        self.einops_from_space = 'b (f n) d'
+        self.einops_to_space = '(b f) n d'
+        self.einops_from_time = 'b (f n) d'
+        self.einops_to_time = '(b n) f d'
+
     def initialize_weights(self):
         # initialization
         # initialize (and freeze) pos_embed by sin-cos embedding
+        # import pdb; pdb.set_trace()
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
@@ -576,11 +589,6 @@ class SpaceTimeTransformer(nn.Module):
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
 
-        ## einops transformations
-        self.einops_from_space = 'b (f n) d'
-        self.einops_to_space = '(b f) n d'
-        self.einops_from_time = 'b (f n) d'
-        self.einops_to_time = '(b n) f d'
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):

@@ -1,0 +1,25 @@
+allow-other: true
+
+logging:
+  type: syslog
+
+azstorage:
+  account-name: zane
+  account-key: 
+  endpoint: https://zane.blob.core.windows.net
+  mode: key
+  container: openaiminecraft
+  update-md5: false
+  validate-md5: false
+  virtual-directory: true
+  max-results-for-list: 0
+  disable-compression: false
+  telemetry: ""
+  honour-acl: false
+  type: adls
+  sdk-trace: true
+
+components:
+  - libfuse
+  - file_cache
+  - azstorage

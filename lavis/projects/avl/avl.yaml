@@ -38,7 +38,7 @@ run:
   max_epoch: 201
   batch_size_train: 16
   batch_size_eval: 16
-  num_workers: 16
+  num_workers: 8
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
