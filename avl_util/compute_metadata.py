@@ -282,14 +282,14 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
 
     batch_index = 0
     # Using ThreadPoolExecutor to parallelize file processing
-    for batch in tqdm(batches):
+    for batch in tqdm(batches, desc='Batch', position=0):
         with ThreadPoolExecutor(max_workers=os.cpu_count()//2) as executor:
             # Schedule the processing of each file.
             futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
                     for video_file, metadata_file in batch]
 
             # Progress bar for futures
-            for future in as_completed(futures):
+            for future in tqdm(as_completed(futures),  desc='Level 2', leave=False, position=1, total=100):
                 data_chunk = future.result()
                 if data_chunk:
                     data["video"].extend(data_chunk["video"])
