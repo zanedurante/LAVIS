@@ -272,38 +272,46 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         "actions": [],
         "caption": []
     }
+    def divide_into_batches(paired_files, batch_size):
+        """Yield successive n-sized chunks from paired_files."""
+        for i in range(0, len(paired_files), batch_size):
+            yield paired_files[i:i + batch_size]
+
+    batch_size = 100
+    batches = list(divide_into_batches(paired_files, batch_size))
 
     batch_index = 0
     # Using ThreadPoolExecutor to parallelize file processing
-    with ThreadPoolExecutor(max_workers=os.cpu_count()/2) as executor:
-        # Schedule the processing of each file.
-        futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
-                for video_file, metadata_file in paired_files]
+    for batch in tqdm(batches):
+        with ThreadPoolExecutor(max_workers=os.cpu_count()//2) as executor:
+            # Schedule the processing of each file.
+            futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
+                    for video_file, metadata_file in batch]
 
-        # Progress bar for futures
-        for future in tqdm(as_completed(futures), total=len(futures)):
-            data_chunk = future.result()
-            if data_chunk:
-                data["video"].extend(data_chunk["video"])
-                data["start_frame"].extend(data_chunk["start_frame"])
-                data["end_frame"].extend(data_chunk["end_frame"])
-                data["actions"].extend(data_chunk["actions"])
-                data["caption"].extend(data_chunk["caption"])
-            
-            if len(data['video']) > 1e6:
-                df = pd.DataFrame(data)
-                df.to_csv(f'metadata_{batch_index}.csv.gz', index=False, compression={'method': 'gzip', 'compresslevel': 1, 'mtime': 1})
-                batch_index += 1
-                data = {
-                    "video": [],
-                    "start_frame": [],
-                    "end_frame": [],
-                    "actions": [],
-                    "caption": []
-                }
+            # Progress bar for futures
+            for future in as_completed(futures):
+                data_chunk = future.result()
+                if data_chunk:
+                    data["video"].extend(data_chunk["video"])
+                    data["start_frame"].extend(data_chunk["start_frame"])
+                    data["end_frame"].extend(data_chunk["end_frame"])
+                    data["actions"].extend(data_chunk["actions"])
+                    data["caption"].extend(data_chunk["caption"])
+                
     
+            df = pd.DataFrame(data)
+            df.to_csv(f'metadata_{batch_index}.csv', index=False)
+            batch_index += 1
+            data = {
+                "video": [],
+                "start_frame": [],
+                "end_frame": [],
+                "actions": [],
+                "caption": []
+            }
+
     
 
 
 if __name__ == "__main__":
-    load_metadata(chunk_size_frames=4, metadata_dir= './mnt/datasets_mnt/')
+    load_metadata(chunk_size_frames=16, metadata_dir= './mnt/datasets_mnt/')
