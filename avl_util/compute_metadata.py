@@ -275,7 +275,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
 
     batch_index = 0
     # Using ThreadPoolExecutor to parallelize file processing
-    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+    with ThreadPoolExecutor(max_workers=os.cpu_count()/2) as executor:
         # Schedule the processing of each file.
         futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
                 for video_file, metadata_file in paired_files]
@@ -290,9 +290,9 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
                 data["actions"].extend(data_chunk["actions"])
                 data["caption"].extend(data_chunk["caption"])
             
-            if len(data['video']) > 10000:
+            if len(data['video']) > 1e6:
                 df = pd.DataFrame(data)
-                df.to_csv(os.path.join(metadata_dir, f'metadata_{batch_index}.csv'), index=False)
+                df.to_csv(f'metadata_{batch_index}.csv.gz', index=False, compression={'method': 'gzip', 'compresslevel': 1, 'mtime': 1})
                 batch_index += 1
                 data = {
                     "video": [],
