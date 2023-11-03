@@ -187,7 +187,7 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
             current_hotbar = step_data["hotbar"]
             if current_hotbar != last_hotbar:
                 action["hotbar.{}".format(current_hotbar + 1)] = 1
-        last_hotbar = current_hotbar
+            last_hotbar = current_hotbar
         actions.append(action)
 
     # Append video path and metadata in chunks
