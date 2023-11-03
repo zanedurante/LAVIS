@@ -230,7 +230,7 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
         else:
             data_chunk["caption"].append("No action in the video")
 
-    return data_chunk
+    yield data_chunk
 
 def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesname='./mnt/all_files.txt'):
     with open(filesname) as f:
@@ -261,25 +261,21 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         "actions": [],
         "caption": []
     }
+    with open(os.path.join(metadata_dir, 'metadata.csv'), 'w', newline='') as csvfile:
+        fieldnames = ['video', 'start_frame', 'end_frame', 'actions', 'caption']
+        writer = pd.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        # Using ThreadPoolExecutor to parallelize file processing
+        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            # Schedule the processing of each file.
+            futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
+                    for video_file, metadata_file in paired_files]
 
-    # Using ThreadPoolExecutor to parallelize file processing
-    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-        # Schedule the processing of each file.
-        futures = [executor.submit(process_file, metadata_dir, video_file, metadata_file, chunk_size_frames)
-                   for video_file, metadata_file in paired_files]
-
-        # Progress bar for futures
-        for future in tqdm(as_completed(futures), total=len(futures)):
-            data_chunk = future.result()
-            if data_chunk:
-                data["video"].extend(data_chunk["video"])
-                data["start_frame"].extend(data_chunk["start_frame"])
-                data["end_frame"].extend(data_chunk["end_frame"])
-                data["actions"].extend(data_chunk["actions"])
-                data["caption"].extend(data_chunk["caption"])
-    
-    df = pd.DataFrame(data)
-    df.to_csv(os.path.join(metadata_dir, 'metadata.csv'), index=False)
+            # Progress bar for futures
+            for future in tqdm(as_completed(futures), total=len(futures)):
+                data_chunk = future.result()
+                for data_chunk in future.result():
+                    writer.writerow(data_chunk)
 
 
 if __name__ == "__main__":
