@@ -240,7 +240,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     metadata_files = sorted([f for f in files if f.endswith('.jsonl')])
 
     paired_files = []
-    for video_file in video_files:
+    for video_file in tqdm(video_files):
         # Get the base name without extension for the video file
         video_base_name = os.path.splitext(os.path.basename(video_file))[0]
         for metadata_file in metadata_files:
