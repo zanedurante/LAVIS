@@ -230,7 +230,18 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
         else:
             data_chunk["caption"].append("No action in the video")
 
-    yield data_chunk
+    return data_chunk
+
+def batch_process_files(executor, batch):
+    results = []
+    futures = [executor.submit(process_file, *args) for args in batch]
+
+    for future in tqdm(as_completed(futures), total=len(futures)):
+        result = future.result()
+        if result:
+            results.append(result)
+            
+    return results
 
 def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesname='./mnt/all_files.txt'):
     with open(filesname) as f:
@@ -261,6 +272,8 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         "actions": [],
         "caption": []
     }
+
+    batch_index = 0
     with open(os.path.join(metadata_dir, 'metadata.csv'), 'w', newline='') as csvfile:
         fieldnames = ['video', 'start_frame', 'end_frame', 'actions', 'caption']
         writer = pd.DictWriter(csvfile, fieldnames=fieldnames)
@@ -274,8 +287,26 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
             # Progress bar for futures
             for future in tqdm(as_completed(futures), total=len(futures)):
                 data_chunk = future.result()
-                for data_chunk in future.result():
-                    writer.writerow(data_chunk)
+                if data_chunk:
+                    data["video"].extend(data_chunk["video"])
+                    data["start_frame"].extend(data_chunk["start_frame"])
+                    data["end_frame"].extend(data_chunk["end_frame"])
+                    data["actions"].extend(data_chunk["actions"])
+                    data["caption"].extend(data_chunk["caption"])
+                
+                if len(data['video']) > 10000:
+                    df = pd.DataFrame(data)
+                    df.to_csv(os.path.join(metadata_dir, f'metadata_{batch_index}.csv'), index=False)
+                    batch_index += 1
+                    data = {
+                        "video": [],
+                        "start_frame": [],
+                        "end_frame": [],
+                        "actions": [],
+                        "caption": []
+                    }
+    
+    
 
 
 if __name__ == "__main__":
