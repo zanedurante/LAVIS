@@ -5,7 +5,7 @@ logging:
 
 azstorage:
   account-name: zane
-  account-key: 
+  account-key: wcLw7jk1Pzcrn3ruJBv8SMOTz6n66GPRBd0Cckf8cJ7PFj6sHEl5oW4UD0DLrCGJFKDCy19WW4OB+AStW5lQzA== 
   endpoint: https://zane.blob.core.windows.net
   mode: key
   container: openaiminecraft

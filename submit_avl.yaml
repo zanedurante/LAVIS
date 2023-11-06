@@ -1,0 +1,32 @@
+# usage: amlt run caption_webvid.yaml
+description: 16 v100 NTP on Rewritten Webvid
+
+target:
+  service: amlk8s
+  name: itphyperdgx2cl1 
+  vc: hai7 
+
+environment:
+  image: images/avl:latest
+  username: stevenml
+  registry: stevenml.azurecr.io
+
+code:
+  local_dir: $CONFIG_DIR/LAVIS
+
+storage:
+  datasets: 
+    storage_account_name: zane
+    container_name: openaiminecraft
+    mount_dir: /mnt/datasets_mnt
+    mount_options: ["-o", "attr_timeout=240", "-o", "entry_timeout=240", "-o", "negative_timeout=120", "-o", "allow_other"]
+    local_dir: /home/v-zadurante/mnt/datasets_mnt
+
+# list of jobs to run, we run 1 job in this example
+jobs:
+- name: AVL
+  sku: G16 # Use 1 16 GPU node, for 2 nodes do 2xG16, for 4 nodes do 4xG16
+  preemptible: False # Makes it so that your code is not interrupted.  If debugging, can set to True so that it runs faster or if all the non-preemptible (NP) nodes are already taken.
+  command:
+  - bash conda 
+  - bash run_scripts/trio/train_rewritten.sh

@@ -269,7 +269,6 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         "video": [],
         "start_frame": [],
         "end_frame": [],
-        "actions": [],
         "caption": []
     }
     def divide_into_batches(paired_files, batch_size):
@@ -277,7 +276,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         for i in range(0, len(paired_files), batch_size):
             yield paired_files[i:i + batch_size]
 
-    batch_size = 100
+    batch_size = 1000
     batches = list(divide_into_batches(paired_files, batch_size))
 
     batch_index = 0
@@ -289,26 +288,19 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
                     for video_file, metadata_file in batch]
 
             # Progress bar for futures
-            for future in tqdm(as_completed(futures),  desc='Level 2', leave=False, position=1, total=100):
+            for future in tqdm(as_completed(futures),  desc='Level 2', leave=False, position=1, total=batch_size):
                 data_chunk = future.result()
                 if data_chunk:
                     data["video"].extend(data_chunk["video"])
                     data["start_frame"].extend(data_chunk["start_frame"])
                     data["end_frame"].extend(data_chunk["end_frame"])
-                    data["actions"].extend(data_chunk["actions"])
+                    # data["actions"].extend(data_chunk["actions"])
                     data["caption"].extend(data_chunk["caption"])
-                
-    
-            df = pd.DataFrame(data)
-            df.to_csv(f'metadata_{batch_index}.csv', index=False)
-            batch_index += 1
-            data = {
-                "video": [],
-                "start_frame": [],
-                "end_frame": [],
-                "actions": [],
-                "caption": []
-            }
+     
+    df = pd.DataFrame(data)
+    df.to_csv(f'metadata.csv', index=False)
+          
+
 
     
 

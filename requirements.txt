@@ -20,8 +20,8 @@ scikit-image
 sentencepiece
 spacy
 streamlit
-timm==0.4.12
-torch==1.10.0
+timm==0.8.0.dev0
+torch==2.1.0
 torchvision
 tqdm
 transformers==4.25
