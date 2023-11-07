@@ -17,6 +17,7 @@ datasets:
     data_type: videos
     total_num_frames: 16
     num_skip_frames: 0
+    scale: medium
     vis_processor:
         train:
           name: "trio_video_train"

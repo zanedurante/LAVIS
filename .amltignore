@@ -1,0 +1,7 @@
+*.log
+*.wandb
+mnt/all_files.txt 
+avl_util/all_files.txt
+*.png
+*.ipynb
+*.pdf

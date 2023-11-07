@@ -306,4 +306,4 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
 
 
 if __name__ == "__main__":
-    load_metadata(chunk_size_frames=9, metadata_dir= '/mnt/datasets_mnt/')
+    load_metadata(chunk_size_frames=4, metadata_dir= '/mnt/datasets_mnt/')

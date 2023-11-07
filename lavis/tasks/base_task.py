@@ -226,6 +226,7 @@ class BaseTask:
                 break
 
             samples = next(data_loader)
+            # print('samples: ', samples)
 
             samples = prepare_sample(samples, cuda_enabled=cuda_enabled)
             samples.update(

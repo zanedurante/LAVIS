@@ -215,16 +215,21 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
         ...
 
     """
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, scale='small'):
         # use_fixed_start=True means we use the start time of the segment as the start time of the video
         # super().__init__(*args, **kwargs)
-         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
+         
          self.total_num_frames = total_num_frames
          self.transforms = self.get_transforms()
+         self.scale = scale
+         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
         
 
     def _load_metadata(self):
-        self.converted_csv_path = "/mnt/datasets_mnt/metadata.csv"
+        print('dataset scale: ', self.scale)
+        assert self.scale in ['small', 'medium', 'large', 'tiny']
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_{self.scale}.csv"
+        
        
         self.metadata = pd.read_csv(self.converted_csv_path)
         # print(self.metadata)

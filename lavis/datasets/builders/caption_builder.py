@@ -72,6 +72,7 @@ class MinecraftBuilder(BaseDatasetBuilder):
             )
             ann_paths = None # Not used for TrioVideo datasets 
             vis_root = None # Not used for TrioVideo datasets
+            scale = self.config.get("scale", "small")
             datasets[split] = dataset_cls(
                         vis_processor=vis_processor,
                         text_processor=text_processor,
@@ -79,6 +80,7 @@ class MinecraftBuilder(BaseDatasetBuilder):
                         vis_root=vis_root,
                         num_skip_frames=num_skip_frames,
                         total_num_frames=num_frames,
+                        scale=scale
             )
 
         return datasets
