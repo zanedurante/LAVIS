@@ -298,7 +298,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
                     data["caption"].extend(data_chunk["caption"])
      
     df = pd.DataFrame(data)
-    df.to_csv(f'metadata.csv', index=False)
+    df.to_csv(f'metadata_{chunk_size_frames}.csv', index=False)
           
 
 
@@ -306,4 +306,4 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
 
 
 if __name__ == "__main__":
-    load_metadata(chunk_size_frames=16, metadata_dir= './mnt/datasets_mnt/')
+    load_metadata(chunk_size_frames=9, metadata_dir= '/mnt/datasets_mnt/')

@@ -240,7 +240,7 @@ class BaseTask:
 
             with torch.cuda.amp.autocast(enabled=use_amp):
                 loss, loss_dict = self.train_step(model=model, samples=samples)
-                loss /= accum_grad_iters #TODO: not affect loss_dict values for logging
+                loss = loss / accum_grad_iters #TODO: not affect loss_dict values for logging
 
             # after_train_step()
             if use_amp:

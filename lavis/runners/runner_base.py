@@ -90,7 +90,7 @@ class RunnerBase:
             if self.use_distributed:
                 if self._wrapped_model is None:
                     self._wrapped_model = DDP(
-                        self._model, device_ids=[self.config.run_cfg.gpu]
+                        self._model, device_ids=[self.config.run_cfg.gpu], find_unused_parameters=True
                     )
             else:
                 self._wrapped_model = self._model
@@ -404,7 +404,7 @@ class RunnerBase:
             if self.evaluate_only:
                 break
 
-            # dist.barrier()
+            dist.barrier()
 
         # testing phase
         test_epoch = "best" if len(self.valid_splits) > 0 else cur_epoch
