@@ -13,11 +13,11 @@ model:
   num_frames: 16
 
 datasets:
-  minecraft: # name of the dataset builder
+  local_minecraft: # name of the dataset builder
     data_type: videos
     total_num_frames: 16
     num_skip_frames: 0
-    scale: medium
+    scale: tiny
     vis_processor:
         train:
           name: "trio_video_train"
@@ -37,10 +37,10 @@ run:
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
-  batch_size_train: 3
-  batch_size_eval: 3
-  num_workers: 3
-  # accum_grad_iters: 2
+  batch_size_train: 26
+  batch_size_eval: 26
+  num_workers: 16
+  # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -48,12 +48,12 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft"
+  output_dir: "output/Trio/Minecraft"
 
   # logging
   log: wandb
 
-  amp: False
+  amp: True
   resume_ckpt_path: null #"/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030194/checkpoint_15.pth"
 
   evaluate: False 

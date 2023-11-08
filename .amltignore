@@ -5,3 +5,4 @@ avl_util/all_files.txt
 *.png
 *.ipynb
 *.pdf
+*.pth

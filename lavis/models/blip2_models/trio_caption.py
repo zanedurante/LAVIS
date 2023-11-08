@@ -20,6 +20,7 @@ from lavis.models.blip2_models.modeling_t5 import T5Config, T5ForConditionalGene
 from transformers.modeling_outputs import BaseModelOutput
 from timm.models.vision_transformer import PatchEmbed, Block
 from lavis.models.base_model import BaseModel
+from transformers import BertTokenizer
 # TODO: Allow for better fp16 support since the model is frozen. Right now fp32 is used for the model.
 # https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
 
@@ -119,6 +120,38 @@ class TrioT5(Blip2Base):
         # self.few_shot_prob = few_shot_prob
 
         # self.qformer_text_input = qformer_text_input
+    @classmethod
+    def init_tokenizer(cls, truncation_side="right"):
+        NOOP_ACTION = {
+            "ESC": 0,
+            "back": 0,
+            "drop": 0,
+            "forward": 0,
+            "hotbar.1": 0,
+            "hotbar.2": 0,
+            "hotbar.3": 0,
+            "hotbar.4": 0,
+            "hotbar.5": 0,
+            "hotbar.6": 0,
+            "hotbar.7": 0,
+            "hotbar.8": 0,
+            "hotbar.9": 0,
+            "inventory": 0,
+            "jump": 0,
+            "left": 0,
+            "right": 0,
+            "sneak": 0,
+            "sprint": 0,
+            "swapHands": 0,
+            "attack": 0,
+            "use": 0,
+            "pickItem": 0,
+        }
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side=truncation_side)
+        tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+        new_tokens = list(NOOP_ACTION.keys())
+        tokenizer.add_tokens(new_tokens)
+        return tokenizer
         
     def forward(self, samples):
         # print('-----------------')
@@ -135,10 +168,12 @@ class TrioT5(Blip2Base):
             raise ValueError("No image or video input found in input dict.")
         
         # features, mask, ids_restore = self.visual_encoder.forward_encoder(image, 0.75)
-        features, mask, ids_restore =   self.visual_encoder(image)
-        image_embeds = self.ln_vision(features)
-        pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-        mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
+        # with self.maybe_autocast():
+        with autocast(dtype=torch.float16):
+            features, mask, ids_restore =   self.visual_encoder(image)
+            image_embeds = self.ln_vision(features)
+            pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+            mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
 
         # uncomment following lines for contrastive learning
         # image_embeds = self.image_norm(image_embeds)[:, 0] # self.image_norm is nn.LayerNorm(eps=1e-5, elementwise_affine=True)

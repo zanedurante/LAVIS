@@ -401,7 +401,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.75,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=6.0/7.0,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -455,7 +455,7 @@ class SpaceTimeTransformer(nn.Module):
         
         self.patches_per_frame = num_patches // num_frames
         # import pdb; pdb.set_trace()
-        self.patches_per_frame_after_dropout = int(self.patches_per_frame * (1 - self.patch_drop_rate))
+        self.patches_per_frame_after_dropout = int(round(self.patches_per_frame * (1 - self.patch_drop_rate)))
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         # self.pos_embed = nn.Parameter(
@@ -523,7 +523,7 @@ class SpaceTimeTransformer(nn.Module):
         depth = 24
         num_heads = 16
         decoder_embed_dim = 768
-        decoder_depth = 8
+        decoder_depth = 7
         decoder_num_heads = 16
         mlp_ratio = 4.
         norm_layer = nn.LayerNorm
@@ -881,7 +881,6 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
     # model.image_proj = nn.Linear(768, 512) # CLIP Vision to CLIP text embed space
     # model.image_proj.weight.copy_(vit_checkpoint['head.weight'])
     # model.image_proj.bias.copy_(vit_checkpoint['head.bias']) #Load contrastive projection layer from 'head.weight', 'head.bias'
-    
     # use checkpoint
     if use_checkpoint:
         print("Loading checkpoints is not yet supported!")

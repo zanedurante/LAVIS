@@ -224,7 +224,7 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
         
 
     def _load_metadata(self):
-        self.metadata_dir = '/home/nikepupu/dataset/minecraftdata/test'
+        self.metadata_dir = '/home/nikepupu/test'
         self.video_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.mp4')])
         self.metadata_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.jsonl')])
 
@@ -357,7 +357,7 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
     def __len__(self):
         return len(self.metadata)
     
-    @lru_cache(maxsize=None)
+    
     def __getitem__(self, index):
 
         ann = self.metadata.iloc[index]
