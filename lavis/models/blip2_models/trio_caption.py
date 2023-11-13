@@ -268,7 +268,7 @@ class TrioT5(Blip2Base):
         for idx in range(max_length):  # Subtract 1 because we already have the start token
             text_output_idx = [ text[idx] for text in text_output ]
 
-            print('text_output_idx: ', text_output_idx)
+            # print('text_output_idx: ', text_output_idx)
             target_tokens = self.tokenizer(
                 text_output_idx,
                 padding='longest',
