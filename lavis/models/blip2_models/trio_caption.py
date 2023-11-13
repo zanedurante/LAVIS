@@ -104,7 +104,7 @@ class TrioT5(Blip2Base):
         configuration.output_hidden_states=True
         self.model = TransfoXLLMHeadModel(configuration)
         self.model.resize_token_embeddings(len(self.tokenizer))
-        self.model.transformer.word_emb = self.model.transformer.word_emb.half()
+        # self.model.transformer.word_emb = self.model.transformer.word_emb.half()
        
 
         
@@ -177,6 +177,7 @@ class TrioT5(Blip2Base):
         tokenizer.add_tokens(camera_actions)
         tokenizer.add_tokens('[endofaction]')
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         # tokenizer.pad_token = tokenizer.eos_token
 
         return tokenizer
@@ -197,7 +198,7 @@ class TrioT5(Blip2Base):
         text_output = samples["text_output"]
         # divide text ouput based on delimeter [EndofAction] 
         # samples["text_output"] has the shape: (batch_size, 1)
-        print('init text output: ', text_output)
+        # print('init text output: ', text_output)
         text_output = [text.split('[endofaction]') for text in text_output]
         text_output = [ text[:-1] for text in text_output ]
         text_output = [ [t + '[endofaction]'  for t in text]  for text in text_output ] 
@@ -206,19 +207,19 @@ class TrioT5(Blip2Base):
         # features, mask, ids_restore = self.visual_encoder.forward_encoder(image, 0.75)
         # with self.maybe_autocast():
         # with autocast(dtype=torch.float16):
-        #     features, mask, ids_restore =   self.visual_encoder(image)
-        #     image_embeds = self.ln_vision(features)
-            # pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-            # mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
+        features, mask, ids_restore =   self.visual_encoder(image)
+        image_embeds = self.ln_vision(features)
+        pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+        mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
     
         # image_embeddings = []
         # for frame in image:
-        with autocast(dtype=torch.float16):
-            features, mask, ids_restore = self.visual_encoder(image)
-            image_embeds = self.ln_vision(features)
+        # with autocast(dtype=torch.float16):
+        #     features, mask, ids_restore = self.visual_encoder(image)
+        #     image_embeds = self.ln_vision(features)
         
-        print('features shape: ', features.shape)
-        print(text_output)
+        # print('features shape: ', features.shape)
+        # print(text_output)
 
         frames_embeddings = []
         num_frames = self.num_frames
@@ -260,46 +261,62 @@ class TrioT5(Blip2Base):
         
         # last_hidden_states = features[:, 0, :].unsqueeze(1)
         # last_hidden_states = self.xl_proj(last_hidden_states)
+        # total_embeddings = torch.empty((features.shape[0], 0, 1024), dtype=torch.float16).to(image.device)
         mems = None
-        total_embeddings = torch.empty((features.shape[0], 0, 1024), dtype=torch.float16).to(image.device)
+        # with autocast(dtype=torch.float16):
+        total_loss = 0.0
         for idx in range(max_length):  # Subtract 1 because we already have the start token
             text_output_idx = [ text[idx] for text in text_output ]
+
+            print('text_output_idx: ', text_output_idx)
             target_tokens = self.tokenizer(
                 text_output_idx,
                 padding='longest',
                 truncation=True,
                 max_length=self.num_frames * 10,
+                add_special_tokens = True,
                 # skip_special_tokens=False,
                 return_tensors="pt"
             ).to(image.device)
 
             input_ids = target_tokens.input_ids
-            print('dix: ', text_output_idx)
-            print('insdie: ', input_ids)
+            # print('insdie: ', input_ids)
+            # text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+            # print('text: ' , text)
+            # text = self.tokenizer.decode(input_ids[1], skip_special_tokens=False)
+            # print('text: ' , text)
+            # text = self.tokenizer.decode(input_ids[2], skip_special_tokens=False)
+            # print('text: ' , text)
+            # text = self.tokenizer.decode(input_ids[3], skip_special_tokens=False)
+            # print('text: ' , text)
+            # exit()
+            # print('dix: ', text_output_idx)
+            # print('insdie: ', input_ids)
             
             text_embeddings = self.model.transformer.word_emb(input_ids)
             image_embeddings = self.xl_proj(frames_embeddings[idx])
+            # print(image_embeddings.shape)
             
             total_embeddings = torch.cat(( image_embeddings, text_embeddings), dim = 1 )
+            labels = input_ids.clone()
+
+            #prepend -100 to labels for image patches
+            labels = torch.cat((torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, labels), dim=1)
 
             # Generate the next token
             output = self.model(
                 inputs_embeds = total_embeddings,
                 mems = mems,
+                labels = labels,
                 # attention_mask=Qformer_atts,
                 # encoder_hidden_states=last_hidden_states,
                 # encoder_attention_mask=image_atts,
                 return_dict=True,
             )   
-            # print(output.last_hidden_state.shape)
-            print(f'output {idx}: ', output.keys())
-            print(output['prediction_scores'].shape)
-            print('total: ', total_embeddings.shape)
-            
-            # print('output: ', output)
-            # exit()
+            loss = output.loss
             mems = output.mems #.last_hidden_state
-        exit()
+            total_loss += loss
+        
 
             # Select the next token. Here you may use a greedy approach or a sampling strategy.
             # next_token = select_next_token(query_output)  # Implement this function based on your model's output
@@ -315,32 +332,32 @@ class TrioT5(Blip2Base):
     # Convert the token IDs back to text
     
         
-        query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
-        text_Qformer = self.tokenizer(
-                samples["text_output"],
-                padding='longest',
-                truncation=True,
-                max_length=20,
-                return_tensors="pt",
-            ).to(image.device)
+        # query_tokens = self.query_tokens.expand(image_embeds.shape[0], -1, -1)
+        # text_Qformer = self.tokenizer(
+        #         samples["text_output"],
+        #         padding='longest',
+        #         truncation=True,
+        #         max_length=20,
+        #         return_tensors="pt",
+        #     ).to(image.device)
         
-        query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
-        Qformer_atts = torch.cat([query_atts, text_Qformer.attention_mask],dim=1)
-        image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
-        query_output = self.Qformer.bert(
-                text_Qformer.input_ids,
-                attention_mask=Qformer_atts,
-                query_embeds=query_tokens,
-                encoder_hidden_states=image_embeds,
-                encoder_attention_mask=image_atts,
-                return_dict=True,
-            )
-        print('Qformer_atts: ', Qformer_atts)
-        print('query_tokens: ', query_tokens)
-        print('input ids: ', text_Qformer.input_ids)
-        print('query_output:', query_output.last_hidden_state.shape)
-        print(query_output.last_hidden_state[:,:query_tokens.size(1),:].shape)
-        exit()
+        # query_atts = torch.ones(query_tokens.size()[:-1], dtype=torch.long).to(image.device)
+        # Qformer_atts = torch.cat([query_atts, text_Qformer.attention_mask],dim=1)
+        # image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
+        # query_output = self.Qformer.bert(
+        #         text_Qformer.input_ids,
+        #         attention_mask=Qformer_atts,
+        #         query_embeds=query_tokens,
+        #         encoder_hidden_states=image_embeds,
+        #         encoder_attention_mask=image_atts,
+        #         return_dict=True,
+        #     )
+        # print('Qformer_atts: ', Qformer_atts)
+        # print('query_tokens: ', query_tokens)
+        # print('input ids: ', text_Qformer.input_ids)
+        # print('query_output:', query_output.last_hidden_state.shape)
+        # print(query_output.last_hidden_state[:,:query_tokens.size(1),:].shape)
+        # exit()
         # combined_embeddings = torch.cat([torch.cat((t, i), dim=1) for t, i in zip(text_embeddings, image_embeds)], dim=0)
         
 
@@ -426,8 +443,8 @@ class TrioT5(Blip2Base):
         #     )
             # loss = outputs.loss + mae_loss * 3
        
-
-        return {"loss": mae_loss, "pred": pred, "image": image, 'mask': mask}
+        total_loss += mae_loss
+        return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask}
 
     # def prepare_few_shot_embeds(self, samples):
     #     this_n_fs = random.choices(

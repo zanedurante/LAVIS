@@ -37,8 +37,8 @@ run:
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
-  batch_size_train: 3
-  batch_size_eval: 3
+  batch_size_train: 4
+  batch_size_eval: 4
   num_workers: 4
   # accum_grad_iters: 32
 
@@ -53,7 +53,7 @@ run:
   # logging
   log: wandb
 
-  amp: True
+  amp: False
   resume_ckpt_path: null #"/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030194/checkpoint_15.pth"
 
   evaluate: False 

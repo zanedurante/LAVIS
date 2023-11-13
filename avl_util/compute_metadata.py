@@ -216,17 +216,25 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
         
         all_actions = []
         captions = ""
-        for idx , action in enumerate(tmp):
-            text_actions = convert_to_text(action)
-            if text_actions:
-                captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
-            else:
-                captions += f"frame {idx}:  No action\n" 
+        # for idx , action in enumerate(tmp):
+        #     text_actions = convert_to_text(action)
+        #     if text_actions:
+        #         captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
+        #     else:
+        #         captions += f"frame {idx}:  No action\n" 
 
-        if captions:
-            data_chunk["caption"].append(captions)
-        else:
-            data_chunk["caption"].append("No action in the video")
+        # if captions:
+        #     data_chunk["caption"].append(captions)
+        # else:
+        #     data_chunk["caption"].append("No action in the video")
+        captions = ""
+        for idx , action in enumerate(data_chunk["actions"][-1]):
+            text_actions = convert_to_text(action)
+            captions += ''.join(text_actions)
+            captions += '[endofaction]'
+
+        
+        data_chunk["caption"].append(captions)
 
     return data_chunk
 
