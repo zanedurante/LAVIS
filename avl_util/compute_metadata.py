@@ -68,8 +68,6 @@ Press any button the window to proceed to the next frame.
 # This is for mapping from recorded sensitivity to the one used in the model
 CAMERA_SCALER = 360.0 / 2400.0
 
-
-
 def top_k_common_items(lst, k):
     count = Counter(lst)
     return [item for item, _ in count.most_common(k)]

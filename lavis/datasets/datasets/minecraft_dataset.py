@@ -126,14 +126,21 @@ def convert_to_text(action_dict):
         # Handling the "camera" key separately.
         if key == "camera":
                 if any(value != 0):
-                    non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
+                    x = int(value[0])
+                    y = int(value[1])
+                    x = max(-49, min(x, 50))
+                    y = max(-49, min(y, 50))
+                    
+                    # non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
+                    non_zero_actions.append(f'[camerax{x}]')
+                    non_zero_actions.append(f'[cameray{y}]')
 
         else:
             # Add the key to the list if the value is non-zero.
             if value != 0:
-                non_zero_actions.append(key)
+                non_zero_actions.append(f"[{key}]")
     
-    return non_zero_actions
+    return sorted(non_zero_actions)
 
 def json_action_to_env_action(json_action):
     """
@@ -312,43 +319,15 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
                 elif isinstance(tmp, str):
                     data["actions"].append([actions[start_frame:stop_frame]])
                 
-                
-                all_actions = []
                 captions = ""
                 for idx , action in enumerate(data["actions"][-1]):
                     text_actions = convert_to_text(action)
-                    if text_actions:
-                        captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
-                    else:
-                        captions += f"frame {idx}:  No action\n" 
+                    captions += ''.join(text_actions)
+                    captions += '[endofaction]'
 
-                if captions:
-                    data["caption"].append(captions)
-                else:
-                    data["caption"].append("No action in the video")
-                    
-                # print('all actions: ', all_actions)
                 
-                # for idx , action in enumerate(data["actions"][-1]):
-                #     text_actions = convert_to_text(action)
-                #     all_actions.extend(text_actions)
-                # if all_actions:
-                #     text_action = top_k_common_items(all_actions, 3)
-                #     text_actions = 'Action: ' + ' '.join(text_action) + '\n'
-                #     data["caption"].append(text_actions)
-                # else:
-                #     data["caption"].append("No action")
-                
-
-        # if self.split == 'val':
-        #     random.seed(0)
-        #     sampled_numbers = list(random.sample(range(0, 100), 30))
-            
-        #     data["video_path"] = [data["video_path"][i] for i in sampled_numbers]
-        #     data["fix_start"] = [data["fix_start"][i] for i in sampled_numbers]
-        #     data["stop"] = [data["stop"][i] for i in sampled_numbers]
-        #     data["actions"] = [data["actions"][i] for i in sampled_numbers]
-        #     data["text"] = [data["text"][i] for i in sampled_numbers]
+                data["caption"].append(captions)
+               
       
 
         self.metadata = pd.DataFrame(data)
