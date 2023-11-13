@@ -24,8 +24,8 @@ from transformers import BertTokenizer
 # TODO: Allow for better fp16 support since the model is frozen. Right now fp32 is used for the model.
 # https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
 
-from transformers import OPTConfig, OPTModel, AutoTokenizer, OPTForCausalLM, GPT2Model, GPT2LMHeadModel, GPT2Config, TransfoXLLMHeadModel, TransfoXLConfig
-
+from transformers import  AutoTokenizer, TransfoXLLMHeadModel, TransfoXLConfig, BertLMHeadModel
+import re
 
 @registry.register_model("trio_t5")
 class TrioT5(Blip2Base):
@@ -99,10 +99,10 @@ class TrioT5(Blip2Base):
         #     num_query_token, self.visual_encoder.num_features
         # )
         
-        configuration = TransfoXLConfig()
+        # configuration = TransfoXLConfig()
         # configuration.d_embed = 1024
-        configuration.output_hidden_states=True
-        self.model = TransfoXLLMHeadModel(configuration)
+        # configuration.output_hidden_states=True
+        self.model = BertLMHeadModel.from_pretrained("bert-base-uncased")#TransfoXLLMHeadModel(configuration)
         self.model.resize_token_embeddings(len(self.tokenizer))
         # self.model.transformer.word_emb = self.model.transformer.word_emb.half()
        
@@ -122,9 +122,9 @@ class TrioT5(Blip2Base):
         #     param.requires_grad = False
         #     param.data = param.data.float()
 
-        self.xl_proj = nn.Linear(
-             768, 1024
-        )
+        # self.xl_proj = nn.Linear(
+        #      768, 1024
+        # )
 
         # self.max_txt_len = max_txt_len
         # self.max_output_txt_len = max_output_txt_len
@@ -164,7 +164,7 @@ class TrioT5(Blip2Base):
             "use": 0,
             "pickItem": 0,
         }
-        tokenizer = AutoTokenizer.from_pretrained("transfo-xl-wt103")
+        tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
         new_tokens = list(NOOP_ACTION.keys())
         new_tokens = [ f'[{new_token}]' for new_token in new_tokens ]
         tokenizer.add_tokens(new_tokens)
@@ -176,8 +176,8 @@ class TrioT5(Blip2Base):
         
         tokenizer.add_tokens(camera_actions)
         tokenizer.add_tokens('[endofaction]')
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-        tokenizer.add_special_tokens({"bos_token": "[DEC]"})
+        # tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        # tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         # tokenizer.pad_token = tokenizer.eos_token
 
         return tokenizer
@@ -199,122 +199,130 @@ class TrioT5(Blip2Base):
         # divide text ouput based on delimeter [EndofAction] 
         # samples["text_output"] has the shape: (batch_size, 1)
         # print('init text output: ', text_output)
-        text_output = [text.split('[endofaction]') for text in text_output]
-        text_output = [ text[:-1] for text in text_output ]
-        text_output = [ [t + '[endofaction]'  for t in text]  for text in text_output ] 
+        
+        # split based on the pattern
+        # text_output  = [s for re.split(pattern, text)  for text in text_output]
+        pattern = r'(.*?\[endofaction\])'
+        text_output_final = [ [s for s in re.split(pattern, text) if s] for text in text_output ]
+        # print(text_output)
+        # exit()
+      
+        # text_output2 = [text.split('[endofaction]') for text in text_output1]
+        # # print('text 1 output: ', text_output)
+        # text_output3 = [ text[:-1] for text in text_output2 ]
+        
+        # text_final = []
+        # for text in text_output3:
+        #     # assert len(text) in [self.num_frames + 1, self.num_frames]
+        #     if len(text) not in [self.num_frames + 1, self.num_frames]:
+        #         print("text_output1: ", text_output1)
+        #         print("text_output2: ", text_output2)
+        #         print("text_output3: ", text_output3)
+        #         print("text: ", text)
+        #         exit()
+        #     if len(text) == self.num_frames + 1:
+        #         text_final.append(text[:-1])
+        #     else:
+        #         text_final.append(text)
+                
+        # # print('text 2 output: ', text_final)
+        # text_output = [ [t + '[endofaction]'  for t in text]  for text in text_final ] 
+        # print('text 3 output: ', text_output)
+        
         
 
         # features, mask, ids_restore = self.visual_encoder.forward_encoder(image, 0.75)
         # with self.maybe_autocast():
-        # with autocast(dtype=torch.float16):
-        features, mask, ids_restore =   self.visual_encoder(image)
-        image_embeds = self.ln_vision(features)
-        pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-        mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
-    
-        # image_embeddings = []
-        # for frame in image:
-        # with autocast(dtype=torch.float16):
-        #     features, mask, ids_restore = self.visual_encoder(image)
-        #     image_embeds = self.ln_vision(features)
+        with autocast(dtype=torch.float16):
+            features, mask, ids_restore =   self.visual_encoder(image)
+            image_embeds = self.ln_vision(features)
+            pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+            mae_loss = self.visual_encoder.forward_loss(image, pred, mask)
         
-        # print('features shape: ', features.shape)
-        # print(text_output)
-
-        frames_embeddings = []
-        num_frames = self.num_frames
-        features_per_frame = (features.shape[1]-1)//num_frames
-
-        for i in range(num_frames):
-            frame_embeddings = features[:, 1 + i * features_per_frame:(i+1) * features_per_frame, :]
-            frames_embeddings.append(frame_embeddings)
-
-        
-        max_length = self.num_frames
-
-        # target_tokens = self.tokenizer(
-        #     text_output,
-        #     padding='longest',
-        #     truncation=True,
-        #     max_length=self.num_frames * 10,
-        #     skip_special_tokens=False,
-        #     return_tensors="pt"
-        # ).to(image.device)
-        # target_tokens = [ [
-        #     self.tokenizer(
-        #     t,
-        #     padding='longest',
-        #     truncation=True,
-        #     max_length=self.num_frames * 10,
-        #     skip_special_tokens=False,
-        #     return_tensors="pt"
-        # ).to(image.device)  for t in text]  for text in text_output ] 
-        # # print('samples["text_output"]: ', samples["text_output"])
-        # # print('target tokens: ', target_tokens)
-        # input_ids = target_tokens.input_ids
-
-        # print(input_ids.shape)
-        # exit()
-
-        # print(input_ids)
-        # exit()
-        
-        # last_hidden_states = features[:, 0, :].unsqueeze(1)
-        # last_hidden_states = self.xl_proj(last_hidden_states)
-        # total_embeddings = torch.empty((features.shape[0], 0, 1024), dtype=torch.float16).to(image.device)
-        mems = None
-        # with autocast(dtype=torch.float16):
-        total_loss = 0.0
-        for idx in range(max_length):  # Subtract 1 because we already have the start token
-            text_output_idx = [ text[idx] for text in text_output ]
-
-            # print('text_output_idx: ', text_output_idx)
-            target_tokens = self.tokenizer(
-                text_output_idx,
-                padding='longest',
-                truncation=True,
-                max_length=self.num_frames * 10,
-                add_special_tokens = True,
-                # skip_special_tokens=False,
-                return_tensors="pt"
-            ).to(image.device)
-
-            input_ids = target_tokens.input_ids
-            # print('insdie: ', input_ids)
-            # text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-            # print('text: ' , text)
-            # text = self.tokenizer.decode(input_ids[1], skip_special_tokens=False)
-            # print('text: ' , text)
-            # text = self.tokenizer.decode(input_ids[2], skip_special_tokens=False)
-            # print('text: ' , text)
-            # text = self.tokenizer.decode(input_ids[3], skip_special_tokens=False)
-            # print('text: ' , text)
-            # exit()
-            # print('dix: ', text_output_idx)
-            # print('insdie: ', input_ids)
+            # image_embeddings = []
+            # for frame in image:
+            # with autocast(dtype=torch.float16):
+            #     features, mask, ids_restore = self.visual_encoder(image)
+            #     image_embeds = self.ln_vision(features)
             
-            text_embeddings = self.model.transformer.word_emb(input_ids)
-            image_embeddings = self.xl_proj(frames_embeddings[idx])
-            # print(image_embeddings.shape)
+            # print('features shape: ', features.shape)
+            # print(text_output)
+
+            frames_embeddings = []
+            num_frames = self.num_frames
+            features_per_frame = (features.shape[1]-1)//num_frames
+
+            for i in range(num_frames):
+                frame_embeddings = features[:, 1 + i * features_per_frame:(i+1) * features_per_frame, :]
+                frames_embeddings.append(frame_embeddings)
+
             
-            total_embeddings = torch.cat(( image_embeddings, text_embeddings), dim = 1 )
-            labels = input_ids.clone()
+            max_length = self.num_frames
 
-            #prepend -100 to labels for image patches
-            labels = torch.cat((torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, labels), dim=1)
+            total_embeddings = torch.empty((features.shape[0], 0, 768), dtype=torch.float16).to(image.device)
+           
+            total_loss = 0.0
+            labels = torch.empty((features.shape[0], 0), dtype=torch.long).to(image.device)
+            for idx in range(max_length):  
+                try:
+                    text_output_idx = [ text[idx] for text in text_output_final ]
+                except:
+                    print('textoutdebug: ', text_output)
+                    print('textoutdebug2: ', text_output_final)
+                    exit()
 
-            # Generate the next token
+                # print('text_output_idx: ', text_output_idx)
+                target_tokens = self.tokenizer(
+                    text_output_idx,
+                    padding='longest',
+                    truncation=True,
+                    max_length=self.num_frames * 10,
+                    add_special_tokens = True,
+                    # skip_special_tokens=False,
+                    return_tensors="pt"
+                ).to(image.device)
+
+                input_ids = target_tokens.input_ids
+                # print('insdie: ', input_ids)
+                # text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+                # print('text: ' , text)
+                # text = self.tokenizer.decode(input_ids[1], skip_special_tokens=False)
+                # print('text: ' , text)
+                # text = self.tokenizer.decode(input_ids[2], skip_special_tokens=False)
+                # print('text: ' , text)
+                # text = self.tokenizer.decode(input_ids[3], skip_special_tokens=False)
+                # print('text: ' , text)
+                # exit()
+                # print('dix: ', text_output_idx)
+                # print('insdie: ', input_ids)
+                
+                text_embeddings = self.model.bert.embeddings(input_ids)
+                # image_embeddings = self.xl_proj(frames_embeddings[idx])
+                image_embeddings = frames_embeddings[idx]
+                # print(image_embeddings.shape)
+                
+                total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
+                text_labels = input_ids.clone()
+
+                #prepend -100 to labels for image patches
+                labels = torch.cat((labels, torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, text_labels), dim=1)
+
+                # Generate the next token
+                # TODO: replace image with image special token in label
+                # output = self.model(
+                #     inputs_embeds = total_embeddings,
+                #     mems = mems,
+                #     labels = labels,
+                #     # attention_mask=Qformer_atts,
+                #     # encoder_hidden_states=last_hidden_states,
+                #     # encoder_attention_mask=image_atts,
+                #     return_dict=True,
+                # )  
             output = self.model(
                 inputs_embeds = total_embeddings,
-                mems = mems,
                 labels = labels,
-                # attention_mask=Qformer_atts,
-                # encoder_hidden_states=last_hidden_states,
-                # encoder_attention_mask=image_atts,
-                return_dict=True,
-            )   
+            )
             loss = output.loss
-            mems = output.mems #.last_hidden_state
             total_loss += loss
         
 
@@ -443,7 +451,7 @@ class TrioT5(Blip2Base):
         #     )
             # loss = outputs.loss + mae_loss * 3
        
-        total_loss += mae_loss
+        total_loss = total_loss + mae_loss
         return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask}
 
     # def prepare_few_shot_embeds(self, samples):

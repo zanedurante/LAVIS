@@ -231,9 +231,10 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
         
 
     def _load_metadata(self):
-        self.metadata_dir = '/home/nikepupu/test'
+        self.metadata_dir = '/home/nikepupu/dataset/minecraftdata/downloaded_0'
         self.video_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.mp4')])
         self.metadata_files = sorted([f for f in os.listdir(self.metadata_dir) if f.endswith('.jsonl')])
+        assert len(self.video_files) == len(self.metadata_files)
 
         data = {
             "video": [],
@@ -300,27 +301,29 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
 
             # Append video path and metadata in chunks
             for i in range(num_chunks):
-                data["video"].append(video_path)
+                
                 start_frame = i * chuck_size_frames
                 stop_frame = min((i + 1) * chuck_size_frames, total_frames) 
                 if start_frame == stop_frame:
                     continue
-                
-                data["start_frame"].append(start_frame)
-                data['end_frame'].append(stop_frame)
+                if not len(actions[start_frame:stop_frame]) == self.total_num_frames:
+                    continue
 
-                
+                data["video"].append(video_path)
                 
                 # Assuming 20 FPS, get actions corresponding to the time chunk
                 start_frame, stop_frame = int(start_frame ), int(stop_frame)
+                data["start_frame"].append(start_frame)
+                data['end_frame'].append(stop_frame)
                 tmp = actions[start_frame:stop_frame]
-                if isinstance(tmp, list):
-                    data["actions"].append(actions[start_frame:stop_frame])
-                elif isinstance(tmp, str):
-                    data["actions"].append([actions[start_frame:stop_frame]])
+                # if isinstance(tmp, list):
+                data["actions"].append(actions[start_frame:stop_frame])
+                # elif isinstance(tmp, str):
+                #     data["actions"].append([actions[start_frame:stop_frame]])
                 
                 captions = ""
-                for idx , action in enumerate(data["actions"][-1]):
+                assert len(actions[start_frame:stop_frame]) == self.total_num_frames
+                for idx , action in enumerate(actions[start_frame:stop_frame]):
                     text_actions = convert_to_text(action)
                     captions += ''.join(text_actions)
                     captions += '[endofaction]'
