@@ -264,13 +264,9 @@ class TrioT5(Blip2Base):
             total_loss = 0.0
             labels = torch.empty((features.shape[0], 0), dtype=torch.long).to(image.device)
             for idx in range(max_length):  
-                try:
-                    text_output_idx = [ text[idx] for text in text_output_final ]
-                except:
-                    print('textoutdebug: ', text_output)
-                    print('textoutdebug2: ', text_output_final)
-                    exit()
-
+              
+                text_output_idx = [ text[idx] for text in text_output_final ]
+               
                 # print('text_output_idx: ', text_output_idx)
                 target_tokens = self.tokenizer(
                     text_output_idx,

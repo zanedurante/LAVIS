@@ -71,6 +71,7 @@ CAMERA_SCALER = 360.0 / 2400.0
 def top_k_common_items(lst, k):
     count = Counter(lst)
     return [item for item, _ in count.most_common(k)]
+
 def convert_to_text(action_dict):
     # Initialize an empty list to store the non-zero action strings.
     non_zero_actions = []
@@ -79,14 +80,21 @@ def convert_to_text(action_dict):
         # Handling the "camera" key separately.
         if key == "camera":
                 if any(value != 0):
-                    non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
+                    x = int(value[0])
+                    y = int(value[1])
+                    x = max(-49, min(x, 50))
+                    y = max(-49, min(y, 50))
+                    
+                    # non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
+                    non_zero_actions.append(f'[camerax{x}]')
+                    non_zero_actions.append(f'[cameray{y}]')
 
         else:
             # Add the key to the list if the value is non-zero.
             if value != 0:
-                non_zero_actions.append(key)
+                non_zero_actions.append(f"[{key}]")
     
-    return non_zero_actions
+    return sorted(non_zero_actions)
 
 def json_action_to_env_action(json_action):
     """
@@ -190,51 +198,37 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
 
     # Append video path and metadata in chunks
     for i in range(num_chunks):
-        data_chunk["video"].append(video_path)
+        
         start_frame = i * chunk_size_frames
         stop_frame = min((i + 1) * chunk_size_frames, total_frames) 
         if start_frame == stop_frame:
             continue
-        
-        data_chunk["start_frame"].append(start_frame)
-        data_chunk['end_frame'].append(stop_frame)
+        if not len(actions[start_frame:stop_frame]) == chunk_size_frames:
+            continue
 
-        
+        data_chunk["video"].append(video_path)
         
         # Assuming 20 FPS, get actions corresponding to the time chunk
         start_frame, stop_frame = int(start_frame ), int(stop_frame)
+        data_chunk["start_frame"].append(start_frame)
+        data_chunk['end_frame'].append(stop_frame)
         tmp = actions[start_frame:stop_frame]
-
+        # if isinstance(tmp, list):
+        data_chunk["actions"].append(actions[start_frame:stop_frame])
+        # elif isinstance(tmp, str):
+        #     data["actions"].append([actions[start_frame:stop_frame]])
         
-        if isinstance(tmp, list):
-            data_chunk["actions"].append(actions[start_frame:stop_frame])
-        elif isinstance(tmp, str):
-            data_chunk["actions"].append([actions[start_frame:stop_frame]])
-            tmp = [tmp]
-        
-        
-        
-        all_actions = []
         captions = ""
-        # for idx , action in enumerate(tmp):
-        #     text_actions = convert_to_text(action)
-        #     if text_actions:
-        #         captions += f'frame {idx}: ' + ' '.join(text_actions) + '\n'
-        #     else:
-        #         captions += f"frame {idx}:  No action\n" 
-
-        # if captions:
-        #     data_chunk["caption"].append(captions)
-        # else:
-        #     data_chunk["caption"].append("No action in the video")
-        captions = ""
-        for idx , action in enumerate(data_chunk["actions"][-1]):
+        assert len(actions[start_frame:stop_frame]) == chunk_size_frames
+        for idx , action in enumerate(actions[start_frame:stop_frame]):
             text_actions = convert_to_text(action)
             captions += ''.join(text_actions)
             captions += '[endofaction]'
 
         
         data_chunk["caption"].append(captions)
+
+   
 
     return data_chunk
 
@@ -253,8 +247,8 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     with open(filesname) as f:
         files = f.readlines()
     files = [x.strip() for x in files]
-    video_files = sorted([f for f in files if f.endswith('.mp4')])
-    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])
+    video_files = sorted([f for f in files if f.endswith('.mp4')])[:2000]
+    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])[:2000]
 
      # Create dictionaries to map base names to file names for quick lookup
     video_dict = {os.path.splitext(os.path.basename(f))[0]: f for f in video_files}
@@ -282,7 +276,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         for i in range(0, len(paired_files), batch_size):
             yield paired_files[i:i + batch_size]
 
-    batch_size = 1000
+    batch_size = 2000
     batches = list(divide_into_batches(paired_files, batch_size))
 
     batch_index = 0
@@ -312,4 +306,4 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
 
 
 if __name__ == "__main__":
-    load_metadata(chunk_size_frames=4, metadata_dir= '/mnt/datasets_mnt/')
+    load_metadata(chunk_size_frames=9, metadata_dir= '/mnt/datasets_mnt/')
