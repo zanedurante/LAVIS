@@ -53,6 +53,10 @@ def get_rank():
 def is_main_process():
     return get_rank() == 0
 
+def is_main_node_process():
+    gpus_per_node = torch.cuda.device_count()
+    return get_rank() % gpus_per_node == 0 
+
 
 def get_dist_args_gcr():
     envvars = [
@@ -96,6 +100,7 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
     gpu_rank = local_rank % gpus_per_node
     master_addr = dist_args.get("MASTER_ADDR", "localhost")
     master_port = dist_args.get("MASTER_PORT", "12323")
+    print("II: Distributed args: ", dist_args)
     print(f"WORLD_SIZE: {world_size}, GPU_RANK: {gpu_rank}, NODE RANK: {node_rank}\n")
     # Add support for single gpu dist training with same launcher
     if node_rank is None:
@@ -209,7 +214,7 @@ def download_cached_file(url, check_hash=True, progress=False):
 
         return cached_file
 
-    if is_main_process():
+    if is_main_node_process(): # Download only once per node
         timm_hub.download_cached_file(url, check_hash, progress)
 
     if is_dist_avail_and_initialized():
