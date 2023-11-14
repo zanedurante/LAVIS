@@ -6,3 +6,4 @@ avl_util/all_files.txt
 *.ipynb
 *.pdf
 *.pth
+*.csv

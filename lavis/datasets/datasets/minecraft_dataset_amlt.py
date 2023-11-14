@@ -8,7 +8,6 @@ from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionD
 import json
 import random
 from torchvision import transforms
-from functools import lru_cache
 
 def init_transform_dict(input_res=224,
                         center_crop=256,
@@ -114,26 +113,9 @@ Press any button the window to proceed to the next frame.
 CAMERA_SCALER = 360.0 / 2400.0
 
 
-
 def top_k_common_items(lst, k):
     count = Counter(lst)
     return [item for item, _ in count.most_common(k)]
-def convert_to_text(action_dict):
-    # Initialize an empty list to store the non-zero action strings.
-    non_zero_actions = []
-    
-    for key, value in action_dict.items():
-        # Handling the "camera" key separately.
-        if key == "camera":
-                if any(value != 0):
-                    non_zero_actions.append('[mouse dx:' + str(int(value[0])) + ', mouse dy:' + str(int(value[1])) + ']')
-
-        else:
-            # Add the key to the list if the value is non-zero.
-            if value != 0:
-                non_zero_actions.append(key)
-    
-    return non_zero_actions
 
 def json_action_to_env_action(json_action):
     """
@@ -226,14 +208,13 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
         
 
     def _load_metadata(self):
-        print('dataset scale: ', self.scale)
         assert self.scale in ['small', 'medium', 'large', 'tiny']
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_{self.scale}.csv"
-        
-       
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_{self.scale}.csv"
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         # print(self.metadata)
         # exit()
+        
     def __len__(self):
         return len(self.metadata)
     
@@ -243,7 +224,7 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
         ann = self.metadata.iloc[index]
 
         video_path = ann["video"]
-        video_path = video_path[1:] # removing the '.' prefix
+        #video_path = video_path[1:] # removing the '.' prefix
         start_frame = ann.get("start_frame", 0)
         end_frame = ann.get("end_frame", -1)
 
@@ -260,28 +241,3 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
             "text_input": input_text, # Input prompt
             "text_output": caption, # Correct caption
         }
-
-    # def _get_video_path(self, sample):
-    #     abs_path = sample["video_path"]
-    #     BASE_DIR = "/home/nikepupu/dataset/minecraftdata/downloaded"
-    #     rel_path = abs_path.replace(BASE_DIR, "")
-    #     return abs_path, rel_path
-
-    # def _get_caption(self, sample):
-        
-    #     # text = "Actions:\n"
-    #     # for action in sample["actions"]:
-    #     #     # text += str(json_action_to_env_action(action)) + '\n'
-    #     #     text_actions = convert_to_text(json_action_to_env_action(action)[0]) + '\n'
-    #     #     text += text_actions
-    #     # # print(text)
-    #     # # exit()
-    #     # return text
-    #     # print(sample["text"])
-    #     return sample["text"]
-
-    # def _get_video_lens(self):
-    #     lens = []
-    #     for _, row in self.metadata.iterrows():
-    #         lens.append(row["stop"] - row["fix_start"])
-    #     return lens
