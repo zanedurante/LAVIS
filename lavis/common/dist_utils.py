@@ -58,6 +58,38 @@ def is_main_node_process():
     return get_rank() % gpus_per_node == 0 
 
 
+def get_dist_args_gcr():
+    envvars = [
+        "WORLD_SIZE",
+        "RANK",
+        "LOCAL_RANK",
+        "NODE_RANK",
+        "NODE_COUNT",
+        "HOSTNAME",
+        "MASTER_ADDR",
+        "MASTER_PORT",
+        "NCCL_SOCKET_IFNAME",
+        "OMPI_COMM_WORLD_RANK",
+        "OMPI_COMM_WORLD_SIZE",
+        "OMPI_COMM_WORLD_LOCAL_RANK",
+        "AZ_BATCHAI_MPI_MASTER_NODE",
+    ]
+    args = dict(gpus_per_node=torch.cuda.device_count())
+    missing = []
+    for var in envvars:
+        if var in os.environ:
+            args[var] = os.environ.get(var)
+            try:
+                args[var] = int(args[var])
+            except ValueError:
+                pass
+        else:
+            missing.append(var)
+    print(f"II Args: {args}")
+    if missing:
+        print(f"II Environment variables not set: {', '.join(missing)}.")
+    return args
+
 def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
     gpus_per_node = torch.cuda.device_count()
     dist_args = get_dist_args_gcr()
