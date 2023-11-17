@@ -206,27 +206,37 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
         if not len(actions[start_frame:stop_frame]) == chunk_size_frames:
             continue
 
-        data_chunk["video"].append(video_path)
+        
         
         # Assuming 20 FPS, get actions corresponding to the time chunk
         start_frame, stop_frame = int(start_frame ), int(stop_frame)
-        data_chunk["start_frame"].append(start_frame)
-        data_chunk['end_frame'].append(stop_frame)
+        
+        
         tmp = actions[start_frame:stop_frame]
         # if isinstance(tmp, list):
-        data_chunk["actions"].append(actions[start_frame:stop_frame])
+        
         # elif isinstance(tmp, str):
         #     data["actions"].append([actions[start_frame:stop_frame]])
         
         captions = ""
+        num_actions = 0
         assert len(actions[start_frame:stop_frame]) == chunk_size_frames
         for idx , action in enumerate(actions[start_frame:stop_frame]):
             text_actions = convert_to_text(action)
+            num_actions += len(text_actions)
             captions += ''.join(text_actions)
             captions += '[endofaction]'
 
-        
+
+        # if captions contains predomaintly [endofaction], then skip
+        if num_actions  <=  chunk_size_frames:
+            continue
+
         data_chunk["caption"].append(captions)
+        data_chunk["actions"].append(actions[start_frame:stop_frame])
+        data_chunk['end_frame'].append(stop_frame)
+        data_chunk["start_frame"].append(start_frame)
+        data_chunk["video"].append(video_path)
 
    
 
@@ -247,8 +257,8 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     with open(filesname) as f:
         files = f.readlines()
     files = [x.strip() for x in files]
-    video_files = sorted([f for f in files if f.endswith('.mp4')])[:2000]
-    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])[:2000]
+    video_files = sorted([f for f in files if f.endswith('.mp4')])[15000:17000]
+    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])[15000:17000]
 
      # Create dictionaries to map base names to file names for quick lookup
     video_dict = {os.path.splitext(os.path.basename(f))[0]: f for f in video_files}

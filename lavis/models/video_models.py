@@ -809,10 +809,10 @@ class SpaceTimeTransformer(nn.Module):
 
 
         # x = self.norm_pre(x)
-        if self.training:
-            n = self.patches_per_frame_after_dropout # account for patch dropout
-        else:
-            n = self.patches_per_frame # use all patches at inference
+        # if self.training:
+        n = self.patches_per_frame_after_dropout # account for patch dropout
+        # else:
+        #     n = self.patches_per_frame # use all patches at inference
 
         f = num_frames
         # import pdb; pdb.set_trace()

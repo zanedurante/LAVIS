@@ -309,15 +309,14 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
                 if not len(actions[start_frame:stop_frame]) == self.total_num_frames:
                     continue
 
-                data["video"].append(video_path)
+                
                 
                 # Assuming 20 FPS, get actions corresponding to the time chunk
                 start_frame, stop_frame = int(start_frame ), int(stop_frame)
-                data["start_frame"].append(start_frame)
-                data['end_frame'].append(stop_frame)
+                
                 tmp = actions[start_frame:stop_frame]
                 # if isinstance(tmp, list):
-                data["actions"].append(actions[start_frame:stop_frame])
+                
                 # elif isinstance(tmp, str):
                 #     data["actions"].append([actions[start_frame:stop_frame]])
                 
@@ -327,9 +326,12 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
                     text_actions = convert_to_text(action)
                     captions += ''.join(text_actions)
                     captions += '[endofaction]'
-
                 
+                data["actions"].append(actions[start_frame:stop_frame])
                 data["caption"].append(captions)
+                data["start_frame"].append(start_frame)
+                data['end_frame'].append(stop_frame)
+                data["video"].append(video_path)
                
       
 

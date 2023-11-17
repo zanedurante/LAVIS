@@ -25,6 +25,12 @@ class VideoCaptionTask(BaseTask):
     def __init__(self):
         super().__init__()
     
+    def valid_step(self, model, samples):
+        print('run generate')
+        output = model.generate(samples)
+        print('run generate done')
+        return output
+    
     def evaluation(self, model, data_loader, cuda_enabled=True):
         def show_image(image, title=''):
             # imagenet_mean = np.array([0.485, 0.456, 0.406])
@@ -56,8 +62,15 @@ class VideoCaptionTask(BaseTask):
             if i >= iters_per_epoch:
                 break
             samples = next(data_loader)
+            print(samples['text_output'])
+            if i == 0:
+                continue
             samples = prepare_sample(samples, cuda_enabled=cuda_enabled)
-            eval_output = self.valid_step(model=model, samples=samples)
+            print('start valid step')
+            # eval_output = self.valid_step(model=model, samples=samples)
+            output = model.generate(samples)
+            print('valid done')
+            exit()
             pred  = eval_output[0]["pred"]
             image = eval_output[0]["image"]
             mask = eval_output[0]["mask"]
