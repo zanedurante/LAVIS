@@ -246,9 +246,12 @@ class TrioT5(Blip2Base):
                     outputs = self.model(
                         inputs_embeds = prediction_embeddings,
                     )
-                    next_token_logits = outputs.logits[:, -1, :]
+                    next_token_logits =  outputs.logits[:, -1, :]
+                    # print('next_token_logits: ', next_token_logits)
                     next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
+
                     print('next token: ', next_token)
+                    print('logits: ', torch.softmax(next_token_logits, dim=-1)[0, 50486])
                     result = self.tokenizer.decode(next_token[0], skip_special_tokens=False)
                     print('result: ', result)
                     if result == '[endofaction]':
