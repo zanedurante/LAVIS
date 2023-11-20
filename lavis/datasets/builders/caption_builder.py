@@ -28,6 +28,16 @@ from lavis.datasets.datasets.video_caption_datasets import (
     VideoCaptionEvalDataset,
 )
 
+from lavis.datasets.datasets.msvd_qa import (
+    MSVDQADataset,
+    MSVDQAEvalDataset,
+)
+
+from lavis.datasets.datasets.tgif_qa_dataset import (
+    TGIFQADataset,
+    TGIFQAEvalDataset,
+)
+
 @registry.register_builder("webvid_caption")
 class WebVidCapBuilder(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):
@@ -50,8 +60,9 @@ class WebVidCapBuilder(BaseDatasetBuilder):
         prompt_type = self.config.get("prompt_type", "image")
 
 
-
-        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+        # for now, only do training splits
+        #for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+        for split, dataset_cls in zip(["train"], [self.train_dataset_cls]):
             is_train = split == "train"
             vis_processor = (
                 self.vis_processors["train"]
@@ -74,8 +85,30 @@ class WebVidCapBuilder(BaseDatasetBuilder):
                         total_num_frames=num_frames,
                         prompt_type=prompt_type,
             )
-
         return datasets
+
+@registry.register_builder("msvd_video_qa")
+class MSVDQABuilder(WebVidCapBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = MSVDQADataset
+        self.eval_dataset_cls = MSVDQAEvalDataset
+    
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/msvd/defaults_video_qa.yaml",
+    }
+
+@registry.register_builder("tgif_qa")
+class TGIFQABuilder(WebVidCapBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = TGIFQADataset
+        self.eval_dataset_cls = TGIFQAEvalDataset
+    
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/tgif/defaults_qa.yaml",
+    }
+
 
 @registry.register_builder("rewritten_caption")
 class RewrittenCapBuilder(WebVidCapBuilder):

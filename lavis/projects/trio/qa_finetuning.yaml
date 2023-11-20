@@ -5,13 +5,17 @@
 
 model:
   arch: trio_t5
-
   model_type: flant5xl
   load_finetuned: False
   vit_precision: "fp32"
+  load_vit_ckpt: "/mnt/datasets_mnt/output/ntp/20231101_050815/visual_encoder_e=0_i=80000.pth"
+  freeze_qformer: False
+  temporal_freeze_vit: False
+  masking_ratio: 0.75 # Increase masking ratio when training with Qformer to help with memory
+  #load_qformer_ckpt: "/mnt/datasets_mnt/output/ntp/20231101_050815/Qformer_e=0_i=80000.pth"
 
 datasets:
-  rewritten_caption: # name of the dataset builder
+  tgif_qa:  #tgif_qa or msvd_video_qa: # name of the dataset builder
     data_type: videos
     total_num_frames: 4
     num_skip_frames: -1
@@ -24,8 +28,7 @@ datasets:
         train:
           name: "blip_caption"
         eval:
-          name: "blip_caption"
-
+          name: "blip_caption" 
 run:
   task: video_captioning # TODO: Add associated metrics
   # optimizer
@@ -34,10 +37,11 @@ run:
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 5
-  batch_size_train: 2
+  batch_size_train: 1
   batch_size_eval: 32
   num_workers: 16
-  accum_grad_iters: 8
+  accum_grad_iters: 16
+  save_every: 1000
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -55,7 +59,7 @@ run:
 
   evaluate: False 
   train_splits: ["train"]
-  valid_splits: ["val"]
+  #valid_splits: ["val"]
 
   device: "cuda"
   world_size: 16

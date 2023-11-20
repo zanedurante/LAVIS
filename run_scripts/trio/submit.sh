@@ -1,0 +1,1 @@
+python -m torch.distributed.run --nproc_per_node=16 train.py --cfg-path lavis/trio_configs/g_trio2_4frames_vicuna7b_qformer_rewritten_caption.yaml

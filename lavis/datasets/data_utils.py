@@ -100,7 +100,9 @@ def reorg_datasets_by_split(datasets):
     # reorganize by split
     for _, dataset in datasets.items():
         for split_name, dataset_split in dataset.items():
-            if split_name not in reorg_datasets:
+            if dataset_split is None:
+                continue
+            elif split_name not in reorg_datasets:
                 reorg_datasets[split_name] = [dataset_split]
             else:
                 reorg_datasets[split_name].append(dataset_split)

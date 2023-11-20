@@ -1,0 +1,1 @@
+BASE_CONFIG_PATH = "lavis/trio_configs/base.yaml"

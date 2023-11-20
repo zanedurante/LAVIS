@@ -111,7 +111,7 @@ class Blip2Base(BaseModel):
         return msg
 
     def get_optimizer_params(self, weight_decay, lr_scale=1):
-
+        
         vit_num_layers = self.visual_encoder.get_num_layer()
         lr_scales = list(lr_scale ** (vit_num_layers + 1 - i) for i in range(vit_num_layers + 2))
 

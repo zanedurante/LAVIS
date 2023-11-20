@@ -36,6 +36,22 @@ from torch.utils.data.dataset import ChainDataset
 from torch.cuda import current_device
 
 
+# utility for loading to/from cpu and gpu
+def optimizer_to(optim, device, spread_across=False):
+    #import pdb; pdb.set_trace()
+    for param in optim.state.values():
+        # Not sure there are any global tensors in the state dict
+        if isinstance(param, torch.Tensor):
+            param.data = param.data.to(device)
+            if param._grad is not None:
+                param._grad.data = param._grad.data.to(device)
+        elif isinstance(param, dict):
+            for subparam in param.values():
+                if isinstance(subparam, torch.Tensor):
+                    subparam.data = subparam.data.to(device)
+                    if subparam._grad is not None:
+                        subparam._grad.data = subparam._grad.data.to(device)
+
 @registry.register_runner("runner_base")
 class RunnerBase:
     """
@@ -61,9 +77,12 @@ class RunnerBase:
         self._dataloaders = None
         self._lr_sched = None
 
+        self.start_iter = 0
+
         self.start_epoch = 0
         self.log = cfg.get_config()["run"].get("log", "stdout") # defaults to stdout
-
+        self.save_every = cfg.get_config()["run"].get("save_every", int(500000/16)) # defaults to saving at specified points
+        
         # self.setup_seeds()
         self.setup_output_dir()
 
@@ -109,8 +128,10 @@ class RunnerBase:
             num_parameters = 0
             for p_group in optim_params:
                 for p in p_group["params"]:
-                    num_parameters += p.data.nelement()    
-            logging.info("number of trainable parameters: {}".format(num_parameters))      
+                    num_parameters += p.data.nelement()  
+
+            #import pdb; pdb.set_trace() # Need to divide the layers into temporal vs non-temporal  
+            logging.info("Number of trainable parameters: {}".format(num_parameters))      
                   
             beta2 = self.config.run_cfg.get("beta2", 0.999)
 
@@ -355,6 +376,7 @@ class RunnerBase:
         self.log_config()
 
         # resume from checkpoint if specified
+        #import pdb; pdb.set_trace()
         if not self.evaluate_only and self.resume_ckpt_path is not None:
             self._load_checkpoint(self.resume_ckpt_path)
 
@@ -368,11 +390,11 @@ class RunnerBase:
                 #         model=self.unwrap_dist_model(self.model),
                 #         dataset=self.datasets["train"],
                 #     )
-                train_stats = self.train_epoch(cur_epoch)
+                train_stats = self.train_epoch(cur_epoch, cfg=self.config)
                 self.log_stats(split_name="train", stats=train_stats)
 
             # evaluation phase
-            if len(self.valid_splits) > 0:
+            if len(self.valid_splits) > 0 and False: # Disable validation for now
                 for split_name in self.valid_splits:
                     logging.info("Evaluating on {}.".format(split_name))
 
@@ -394,11 +416,11 @@ class RunnerBase:
                             val_log.update({"best_epoch": best_epoch})
                             self.log_stats(val_log, split_name)
 
-            else:
+            elif False: # Using iter based saving for now
                 # if no validation split is provided, we just save the checkpoint at the end of each epoch.
                 if not self.evaluate_only:
                     self._save_checkpoint(cur_epoch, is_best=False)
-
+            #self._save_checkpoint(cur_epoch, is_best=False)
             if self.evaluate_only:
                 break
 
@@ -423,7 +445,7 @@ class RunnerBase:
 
             return test_logs
 
-    def train_epoch(self, epoch):
+    def train_epoch(self, epoch, cfg=None):
         # train
         self.model.train()
 
@@ -438,6 +460,9 @@ class RunnerBase:
             log_freq=self.log_freq,
             accum_grad_iters=self.accum_grad_iters,
             logger=self.log,
+            save_every=self.save_every,
+            cfg=cfg,
+            start_iter=self.start_iter,
         )
 
     @torch.no_grad()
@@ -611,6 +636,16 @@ class RunnerBase:
             model.load_state_dict(checkpoint["model"], strict=False)
         return model
 
+    def _move_model_to_device(self):
+        if hasattr(self.unwrap_dist_model(self.model), "move_to_device"):
+            self.unwrap_dist_model(self.model).move_to_device(self.device) # for 2gpu support
+            return True
+        else:
+            self.unwrap_dist_model(self.model).to(self.device)
+            return False
+
+
+
     def _load_checkpoint(self, url_or_filename):
         """
         Resume from a checkpoint.
@@ -619,20 +654,33 @@ class RunnerBase:
             cached_file = download_cached_file(
                 url_or_filename, check_hash=False, progress=True
             )
-            checkpoint = torch.load(cached_file, map_location=self.device)
+            checkpoint = torch.load(cached_file, map_location='cpu')
         elif os.path.isfile(url_or_filename):
-            checkpoint = torch.load(url_or_filename, map_location=self.device)
+            checkpoint = torch.load(url_or_filename, map_location='cpu') #self.device) load to cpu first, then move to gpu
         else:
             raise RuntimeError("checkpoint url or path is invalid")
+        #import pdb; pdb.set_trace()
+        model_key = "model" if "model" in checkpoint.keys() else "model_state_dict"
+        opt_key = "optimizer" if "optimizer" in checkpoint.keys() else "optimizer_state_dict"
 
-        state_dict = checkpoint["model"]
+        state_dict = checkpoint[model_key]
         self.unwrap_dist_model(self.model).load_state_dict(state_dict)
-
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        spread_across_gpus = self._move_model_to_device()
+        torch.cuda.empty_cache()
+        #import pdb; pdb.set_trace()
+        self.optimizer.load_state_dict(checkpoint[opt_key])
+        optimizer_to(self.optimizer, self.device, spread_across_gpus)
         if self.scaler and "scaler" in checkpoint:
             self.scaler.load_state_dict(checkpoint["scaler"])
 
-        self.start_epoch = checkpoint["epoch"] + 1
+        # 
+        self.start_epoch = checkpoint["epoch"] + 1 if "epoch" in checkpoint else 0
+        self.start_iter = 0
+        if "=" in url_or_filename: # format is /path/to/ckpt/model_e={}_i={}.pth (epoch and iter)
+            self.start_epoch = int(url_or_filename.split("=")[1].split("_")[0])
+            self.start_iter = int(url_or_filename.split("=")[2].split(".")[0])
+
+
         logging.info("Resume checkpoint from {}".format(url_or_filename))
 
     @main_process

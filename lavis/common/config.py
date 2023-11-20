@@ -11,6 +11,7 @@ from typing import Dict
 
 from omegaconf import OmegaConf
 from lavis.common.registry import registry
+from lavis.trio_configs.config_manager import BASE_CONFIG_PATH
 
 
 class Config:
@@ -22,24 +23,83 @@ class Config:
         # Register the config and configuration for setup
         registry.register("configuration", self)
 
-        user_config = self._build_opt_list(self.args.options)
-
+        user_config = OmegaConf.load(BASE_CONFIG_PATH)
+        if "base" not in self.args.cfg_path and "video_llama" not in self.args.cfg_path:
+            raise ValueError("Only base and video_llama configs are supported for now, add new path in lavis.trio_config.config_manager and implement in lavis.common.config.Config!")
         config = OmegaConf.load(self.args.cfg_path)
 
-        runner_config = self.build_runner_config(config)
-        model_config = self.build_model_config(config, **user_config)
-        dataset_config = self.build_dataset_config(config)
+        # Copy num_frames from dataset config to model config
+        #import pdb; pdb.set_trace()
+        dataset_name = list(config.datasets.keys())[0] # Assume first dataset has number of frames
+        num_frames = config.datasets[dataset_name].get("total_num_frames", 4) # 4 is default
+        config.model.num_frames = num_frames
+        #import pdb; pdb.set_trace()
+        resume_ckpt_path = None
+        world_size = 16
+        if 'run' in config: 
+            if 'resume_ckpt_path' in config['run']:
+                resume_ckpt_path = config['run']['resume_ckpt_path']
+            if 'world_size' in config['run']:
+                world_size = config['run']['world_size']
+        
+        user_config.run.resume_ckpt_path = resume_ckpt_path
+        user_config.run.world_size = world_size
+
+
+        #if "spatial_factor" in config["model"].keys():
+        #    config.model.spatial_factor = user_config["model"]["spatial_factor"]
+
+        runner_config = self.build_runner_config(user_config)
+
+        # merge config['model'] into user_config
+        if 'model' in config:
+            # merge new model config into user_config
+            for key, val in config.model.items():
+                user_config.model[key] = val
+        
+        model_config = self.build_model_config(user_config)#, **user_config)
+        # merge config['dataset'] into user_config
+        if 'datasets' in config:
+            # Replace name of current dataset in user_config with new dataset name
+            new_dataset_name = list(config.datasets.keys())[0]
+            old_dataset_name = list(user_config.datasets.keys())[0]
+            user_config.datasets[new_dataset_name] = user_config.datasets[old_dataset_name]
+            # delete old dataset
+            if new_dataset_name != old_dataset_name:
+                del user_config.datasets[old_dataset_name]
+            # merge new dataset config into user_config
+            for key, val in config.datasets[new_dataset_name].items():
+                user_config.datasets[new_dataset_name][key] = val
+        dataset_config = self.build_dataset_config(user_config)
 
         # Validate the user-provided runner configuration
         # model and dataset configuration are supposed to be validated by the respective classes
         # [TODO] validate the model/dataset configuration
         # self._validate_runner_config(runner_config)
 
+
         # Override the default configuration with user options.
         self.config = OmegaConf.merge(
             runner_config, model_config, dataset_config, user_config
         )
 
+        # Ensure that configs are valid and set config name
+        # currently qformer --> eva g, linear --> clip L14
+        adaptation_network = self.config['model']['adaptation_network']
+        model_size = 'g' if adaptation_network == 'qformer' else 'l'
+        model_type = 'videochatgpt'
+        if 'trio' in self.config['model']['arch']:
+            model_type = 'trio' 
+            # get frozen or not
+            spatial_factor = self.config['model']['spatial_factor']
+            stringified = str(spatial_factor) # "{:.0e}".format(spatial_factor).replace("+0", "-")
+            model_type += stringified
+        if 'videollama' in self.config['model']['arch']:
+            model_type = 'videollama'
+        n_frames = self.config['model']['num_frames']
+        llm_name = self.config['model']['model_type']
+        self.config.name = f"{model_size}_{model_type}_{n_frames}frames_{llm_name}_{adaptation_network}_{dataset_name}"
+        print("Running config with name: ", self.config.name)
     def _validate_runner_config(self, runner_config):
         """
         This method validates the configuration, such that

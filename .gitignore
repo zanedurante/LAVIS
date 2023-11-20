@@ -157,3 +157,7 @@ cache/
 
 # key files for login info (e.g. wandb)
 *.key
+
+g_*
+
+wandb/

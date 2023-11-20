@@ -12,7 +12,7 @@ import warnings
 
 import lavis.common.utils as utils
 import torch.distributed as dist
-from lavis.common.dist_utils import is_dist_avail_and_initialized, is_main_process
+from lavis.common.dist_utils import is_dist_avail_and_initialized, is_main_node_process
 from lavis.common.registry import registry
 from lavis.datasets.data_utils import extract_archive
 from lavis.processors.base_processor import BaseProcessor
@@ -47,7 +47,7 @@ class BaseDatasetBuilder:
         # download, split, etc...
         # only called on 1 GPU/TPU in distributed
 
-        if is_main_process():
+        if is_main_node_process():
             self._download_data()
 
         if is_dist_avail_and_initialized():

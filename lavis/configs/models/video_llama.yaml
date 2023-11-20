@@ -1,0 +1,32 @@
+model:
+  arch: video_llama
+
+  # vit encoder
+  image_size: 224
+  drop_path_rate: 0
+  use_grad_checkpoint: False
+  vit_precision: "fp16"
+  freeze_vit: True
+  freeze_qformer: True
+
+  # Q-Former
+  num_query_token: 32
+
+  # Vicuna
+  llama_model: "lmsys/vicuna-7b-v1.1"
+
+  # generation configs
+  prompt: ""
+
+preprocess:
+    vis_processor:
+        train:
+          name: "trio_video_train"
+        eval:
+          name: "trio_video_eval"
+    text_processor:
+        train:
+          name: "blip_caption"
+        eval:
+          name: "blip_caption"
+    

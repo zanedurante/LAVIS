@@ -4,9 +4,8 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: trio_t5
-
-  model_type: flant5xl
+  arch: trio_vicuna
+  model_type: vicuna7b
   load_finetuned: False
   vit_precision: "fp32"
 
@@ -33,11 +32,11 @@ run:
   init_lr: 2e-5
   min_lr: 0
   weight_decay: 0.05
-  max_epoch: 5
-  batch_size_train: 2
+  max_epoch: 2
+  batch_size_train: 1
   batch_size_eval: 32
   num_workers: 16
-  accum_grad_iters: 8
+  accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -45,12 +44,13 @@ run:
   num_beams: 3
 
   seed: 42
+  shuffle: False # Only train for 1 epoch, want to pickup where we left off and see new samples
   output_dir: "output/Trio/Caption_rewritten"
 
   # logging
   log: wandb
 
-  amp: False
+  amp: True # Test the effects of True
   resume_ckpt_path: null
 
   evaluate: False 

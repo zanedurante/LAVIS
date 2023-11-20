@@ -16,6 +16,7 @@ import wandb
 
 import lavis.tasks as tasks
 from lavis.common.config import Config
+from lavis.trio_configs import config_manager
 from lavis.common.dist_utils import get_rank, init_distributed_mode, init_distributed_gcr
 from lavis.common.logger import setup_logger
 from lavis.common.optims import (

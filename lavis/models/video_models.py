@@ -495,6 +495,12 @@ class SpaceTimeTransformer(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
+    # Update appropriate layers and model parameters
+    def set_masking_ratio(self, new_masking_ratio):
+        self.patch_drop_rate = new_masking_ratio
+        self.patches_per_frame_after_dropout = int(self.patches_per_frame * (1 - self.patch_drop_rate))
+        self.pos_drop = PatchDropout(p=self.patch_drop_rate, sampling='tubelet_uniform', tokens_per_frame=self.patches_per_frame, num_frames=self.num_frames)
+
     def get_num_layer(self, var_name=""):
         if var_name in ("cls_token", "mask_token", "pos_embed"):
             return 0
@@ -566,7 +572,7 @@ class SpaceTimeTransformer(nn.Module):
         return x
 
 
-def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,precision="fp16",    num_frames = 4
+def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,precision="fp32", num_frames = 12
 ):
     #import pdb; pdb.set_trace()
     # TODO: Choose better number of frames
@@ -582,7 +588,7 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,
         drop_path_rate=drop_path_rate,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         num_frames=num_frames,
-        time_init='zeros',
+        time_init='rand',
         freeze_first_frame=True,
         clip=True,
         patch_drop_rate=0.75,
@@ -591,14 +597,23 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,
     model.pre_logits = nn.Identity()
     ftr_dim = model.embed_dim
     # init with weights from eva_vit_g
-    vit_model = create_eva_vit_g(
-        img_size=img_size,
-        drop_path_rate=drop_path_rate,
-        use_checkpoint=use_checkpoint,
-        precision=precision,
-    ) # load from eva_vit_g
 
-    vit_checkpoint = vit_model.state_dict()
+    vit_checkpoint = None
+
+
+    if use_checkpoint:
+        print("Loading vit parameters from checkpoint: ", use_checkpoint)
+        vit_checkpoint = torch.load(use_checkpoint)
+    else:
+        vit_model = create_eva_vit_g(
+            img_size=img_size,
+            drop_path_rate=drop_path_rate,
+            use_checkpoint=use_checkpoint,
+            precision=precision,
+        ) # load from eva_vit_g
+        vit_checkpoint = vit_model.state_dict()
+
+
     ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
 
     nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
@@ -623,6 +638,11 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.4,use_checkpoint=False,
             print(f"Skipping {name} for freezing")
     model.fc = nn.Identity()
     model.vid_proj = nn.Identity()
+    
+    # convert to specified precision -- currently disabled do to instabilities
+    #if precision == "fp16":
+    #    print("Casting layers to: ", precision)
+    #    model = model.half()
     
     # use checkpoint
     if use_checkpoint:

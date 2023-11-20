@@ -9,6 +9,10 @@ model:
   model_type: flant5xl
   load_finetuned: False
   vit_precision: "fp32"
+  load_vit_ckpt: "/mnt/datasets_mnt/output/ntp/20231030_221528/visual_encoder_e=0_i=70000.pth"
+  freeze_qformer: True
+  #masking_ratio: 0.80 # Increase masking ratio when training with Qformer to help with memory
+  # load_qformer_ckpt: "path/to/qformer/ckpt"
 
 datasets:
   rewritten_caption: # name of the dataset builder
@@ -30,7 +34,7 @@ run:
   task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 2e-5
+  init_lr: 2e-6
   min_lr: 0
   weight_decay: 0.05
   max_epoch: 5

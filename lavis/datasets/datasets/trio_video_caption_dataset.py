@@ -15,6 +15,7 @@ import numpy as np
 from abc import abstractmethod
 from torchvision import transforms
 from PIL import Image
+import torch
 
 
 decord.bridge.set_bridge('torch')
@@ -126,7 +127,30 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
     def __len__(self):
         return len(self.metadata)
 
+    def _load_video_gif(self, video_path, start_frame=0, end_frame=-1):
+        to_tensor = transforms.ToTensor()
+        with Image.open(video_path) as img:
+            video_length = img.n_frames
+            if self.num_skip_frames < 0: # Use random frame sampling
+                frame_indices = np.random.randint(0, video_length, self.total_num_frames)
+                frame_indices = np.sort(frame_indices)
+            else:
+                frame_indices = np.arange(start_frame, end_frame, self.num_skip_frames + 1)[:self.total_num_frames]
+            
+            frames = []
+            for frame_idx in frame_indices:
+                img.seek(frame_idx)
+                frame = img.convert("RGB")
+                frame = to_tensor(frame)
+                frames.append(frame)
+            return torch.stack(frames), True
+
     def _load_video(self, video_path, start_frame=0, end_frame=-1):
+
+        # special loading for gif files
+        if video_path.endswith('.gif'): # currently not supported for num_skip_frames < 0
+            return self._load_video_gif(video_path, start_frame, end_frame)
+
         frame_indices = None
         try:
             video_reader = decord.VideoReader(video_path, num_threads=1)
@@ -139,7 +163,7 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             imgs = transforms.ToTensor()(imgs).unsqueeze(0)
             # Repeat self.total_num_frames times in first dim
             imgs = imgs.repeat(self.total_num_frames, 1, 1, 1)
-            return imgs
+            return imgs, False
         video_length = len(video_reader)
 
         if self.num_skip_frames < 0: # Use random frame sampling
@@ -152,7 +176,7 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
         frames = video_reader.get_batch(frame_indices)
         frames = frames.float() / 255
         frames = frames.permute(0, 3, 1, 2)
-        return frames
+        return frames, True
             
     def get_transforms(self):
         return get_transforms("train")
@@ -165,11 +189,14 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
         start_frame = ann.get("start_frame", 0)
         end_frame = ann.get("end_frame", -1)
 
-        video = self._load_video(video_path, start_frame, end_frame)
+        video, loaded_correctly = self._load_video(video_path, start_frame, end_frame)
         video = self.transforms(video)
         caption = self.text_processor(ann["caption"])
 
         input_text = self._get_next_prompt() # Inherited from CaptionDataset
+
+        if not loaded_correctly:
+            caption = self.text_processor("A black screen.") # Graceful error handling to not mess up the model during training.
 
         # "image_id" is kept to stay compatible with the COCO evaluation format
         return {
@@ -190,6 +217,22 @@ class TrioVideoCaptionEvalDataset(TrioVideoCaptionDataset):
         self.prompts = ["A photo of "] # Use single prompt for evals
         if prompt_type == "video":
             self.prompts = ["A video of "]
+
+    def _load_video_gif(self, video_path, start_frame=0, end_frame=-1):
+        to_tensor = transforms.ToTensor()
+        with Image.open(video_path) as img:
+            video_length = img.n_frames
+            if self.num_skip_frames < 0: # Use evenly spread frame sampling (for eval datasets)
+                frame_indices = np.linspace(0, video_length - 1, self.num_frames)
+            else:
+                frame_indices = np.arange(start_frame, end_frame, self.num_skip_frames + 1)[:self.total_num_frames]
+            
+            frames = []
+            for frame_idx in frame_indices:
+                img.seek(frame_idx)
+                frame = to_tensor(img)
+                frames.append(frame)
+            return torch.stack(frames)
 
     # Different data loading for evaluation
     def _load_video(self, video_path, start_frame=0, end_frame=-1):

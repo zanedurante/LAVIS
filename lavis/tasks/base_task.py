@@ -88,7 +88,7 @@ class BaseTask:
     def after_evaluation(self, **kwargs):
         pass
 
-    def inference_step(self):
+    def inference_step(self, model, samples):
         output = model(samples)
         return output
 
@@ -123,7 +123,12 @@ class BaseTask:
         log_freq=50,
         accum_grad_iters=8,
         logger="stdout",
+        save_every=500000, # Save model checkpoint at specified samples 
+        start_iter = 0,
+        cfg=None,
     ):
+        # get start_iter from path (if set)
+        #import pdb; pdb.set_trace()
         return self._train_inner_loop(
             epoch=epoch,
             iters_per_epoch=len(data_loader),
@@ -136,6 +141,9 @@ class BaseTask:
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
             logger=logger,
+            save_every=save_every,
+            start_iter = start_iter,
+            cfg=cfg,
         )
 
     def train_iters(
@@ -152,6 +160,8 @@ class BaseTask:
         log_freq=50,
         accum_grad_iters=8,
         logger="stdout",
+        save_every=500000, # Save model checkpoint every 10k iters
+        cfg=None,
     ):
         return self._train_inner_loop(
             epoch=epoch,
@@ -166,6 +176,8 @@ class BaseTask:
             cuda_enabled=cuda_enabled,
             accum_grad_iters=accum_grad_iters,
             logger=logger,
+            save_every=save_every,
+            cfg=cfg,
         )
 
     def _train_inner_loop(
@@ -182,8 +194,10 @@ class BaseTask:
         cuda_enabled=False,
         accum_grad_iters=1,
         logger="stdout",
-        save_every=10000, # Save model checkpoint every 10k iters
-        save_dir=None # Get's next automatically 
+        save_every=500000, # Save model checkpoint every n iters
+        save_dir=None, # Get's next automatically 
+        cfg=None,
+        start_iter=0,
     ):
         """
         An inner training loop compatible with both epoch-based and iter-based training.
@@ -192,11 +206,9 @@ class BaseTask:
         training stops after #iters_per_epoch iterations.
         """
         # Hardcoded values here for quick experimentation
-        
-        if save_dir is None:
-            now = datetime.now()  # Current date and time
-            save_dir = now.strftime("%Y%m%d_%H%M%S")  # Format as string, e.g., '20231026_153045'
-            print("Saving to dir: ", save_dir)
+        #import pdb; pdb.set_trace()
+        save_dir = f"{cfg.config.name}"
+        os.makedirs(save_dir, exist_ok=True)
         use_amp = scaler is not None
 
         if not hasattr(data_loader, "__next__"):
@@ -222,7 +234,7 @@ class BaseTask:
             inner_epoch = start_iters // iters_per_epoch
             header = header + "; inner epoch [{}]".format(inner_epoch)
 
-        for i in metric_logger.log_every(range(iters_per_epoch), log_freq, header):
+        for i in metric_logger.log_every(range(start_iter, iters_per_epoch), log_freq, header):
             # if using iter-based runner, we stop after iters_per_epoch iterations.
             if i >= iters_per_epoch:
                 break
@@ -230,6 +242,7 @@ class BaseTask:
             samples = next(data_loader)
 
             samples = prepare_sample(samples, cuda_enabled=cuda_enabled)
+            
             samples.update(
                 {
                     "epoch": inner_epoch,
@@ -258,17 +271,24 @@ class BaseTask:
                 else:    
                     optimizer.step()
                 optimizer.zero_grad()
+            if is_main_process():
+                if i != start_iter and (i % save_every == 0 or i % 100000 == 0 or i % 31250 == 0): # always save every 100k and 31.25k iters also (for backwards compatibility)
+                    filename = f"/mnt/datasets_mnt/output/ntp/{save_dir}/model_e={epoch}_i={i}.pth"
+                    if not os.path.exists(os.path.dirname(filename)):
+                        os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    print("Saving model to: ", filename)
+                    if isinstance(model, DDP):
+                        torch.save({
+                            'model_state_dict': model.module.state_dict(), 
+                            'optimizer_state_dict': optimizer.state_dict(),
+                        }, filename)
+                    else:
+                        torch.save({
+                            'model_state_dict': model.state_dict(), 
+                            'optimizer_state_dict': optimizer.state_dict(),
+                        }, filename)
 
-            if is_main_process() and i % save_every == 0 and not i == 0:
-                filename = f"/mnt/datasets_mnt/output/ntp/{save_dir}/visual_encoder_e={epoch}_i={i}.pth"
-                if not os.path.exists(os.path.dirname(filename)):
-                    os.makedirs(os.path.dirname(filename), exist_ok=True)
-                print("Saving model to: ", filename)
 
-                if isinstance(model, DDP):
-                    torch.save(model.module.visual_encoder.state_dict(), filename)
-                else:
-                    torch.save(model.visual_encoder.state_dict(), filename)
 
             if is_main_process() and logger == "wandb":
                 wandb.log(loss_dict)
@@ -287,6 +307,23 @@ class BaseTask:
 
         if is_main_process() and logger == "wandb":
             wandb.log(log_dict)
+        
+        if is_main_process():
+            filename = f"/mnt/datasets_mnt/output/ntp/{save_dir}/visual_encoder_e={epoch}_end.pth"
+            if not os.path.exists(os.path.dirname(filename)):
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
+            print("Saving model to: ", filename)
+
+            if isinstance(model, DDP):
+                torch.save({
+                    'model_state_dict': model.module.state_dict(), 
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, filename)
+            else:
+                torch.save({
+                    'model_state_dict': model.state_dict(), 
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, filename)
 
         return log_dict 
 
