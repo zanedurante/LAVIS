@@ -33,7 +33,7 @@ from lavis.datasets.datasets.dataloader_utils import (
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data.dataset import ChainDataset
-
+from torch.cuda import current_device
 
 @registry.register_runner("runner_base")
 class RunnerBase:
@@ -90,7 +90,7 @@ class RunnerBase:
             if self.use_distributed:
                 if self._wrapped_model is None:
                     self._wrapped_model = DDP(
-                        self._model, device_ids=[self.config.run_cfg.gpu], find_unused_parameters=True
+                        self._model, device_ids=[current_device()], find_unused_parameters=True
                     )
             else:
                 self._wrapped_model = self._model

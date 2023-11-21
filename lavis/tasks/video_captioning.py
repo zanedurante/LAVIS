@@ -69,64 +69,63 @@ class VideoCaptionTask(BaseTask):
             print('start valid step')
             # eval_output = self.valid_step(model=model, samples=samples)
             output = model.generate(samples)
-            print('valid done')
-            exit()
-            pred  = eval_output[0]["pred"]
-            image = eval_output[0]["image"]
-            mask = eval_output[0]["mask"]
-            # import pdb; pdb.set_trace()
-            mask = mask.unsqueeze(-1).repeat(1, 1, model.visual_encoder.patch_embed.patch_size[0]**2 *3)  # (N, H*W, p*p*3)
+            # print('valid done')
+            # pred  = eval_output[0]["pred"]
+            # image = eval_output[0]["image"]
+            # mask = eval_output[0]["mask"]
+            # # import pdb; pdb.set_trace()
+            # mask = mask.unsqueeze(-1).repeat(1, 1, model.visual_encoder.patch_embed.patch_size[0]**2 *3)  # (N, H*W, p*p*3)
 
-            mask = model.visual_encoder.unpatchify(mask)  # 1 is removing, 0 is keeping
-            mask = torch.einsum('nfchw->nfhwc', mask).detach().cpu()
-            mask = mask[0]
+            # mask = model.visual_encoder.unpatchify(mask)  # 1 is removing, 0 is keeping
+            # mask = torch.einsum('nfchw->nfhwc', mask).detach().cpu()
+            # mask = mask[0]
+
+            # # y = model.visual_encoder.unpatchify(pred)
+            # # y = torch.einsum('nchw->nhwc', y).detach().cpu()
+            # # show_image(y[0], "reconstruction")
+            # # plt.show()
+            # # yy = torch.einsum('nchw->nhwc', image).detach().cpu()
+            # # show_image(yy[0], "original")
+            # # plt.show()
+
 
             # y = model.visual_encoder.unpatchify(pred)
-            # y = torch.einsum('nchw->nhwc', y).detach().cpu()
+            # y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
+            # y = y[0]
+            # # show_image(y[0][0], "reconstruction")
+            # # plt.show()
+            # yy = torch.einsum('nfchw->nfhwc', image).detach().cpu()
+            # x = yy[0]
+            # # show_image(yy[0][0], "original")
+            # # plt.show()
+
+            #   # masked image
+            # # import pdb; pdb.set_trace()
+            # im_masked = x * (1 - mask)
+
+            # # MAE reconstruction pasted with visible patches
+            # im_paste = x * (1 - mask) + y * mask
+
+            # # make the plt figure larger
+            # plt.rcParams['figure.figsize'] = [24, 24]
+
+            # plt.subplot(1, 4, 1)
+            # show_image(x[0], "original")
+
+            # plt.subplot(1, 4, 2)
+            # show_image(im_masked[0], "masked")
+
+            # plt.subplot(1, 4, 3)
             # show_image(y[0], "reconstruction")
+
+            # plt.subplot(1, 4, 4)
+            # show_image(im_paste[0], "reconstruction + visible")
+
             # plt.show()
-            # yy = torch.einsum('nchw->nhwc', image).detach().cpu()
-            # show_image(yy[0], "original")
-            # plt.show()
-
-
-            y = model.visual_encoder.unpatchify(pred)
-            y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
-            y = y[0]
-            # show_image(y[0][0], "reconstruction")
-            # plt.show()
-            yy = torch.einsum('nfchw->nfhwc', image).detach().cpu()
-            x = yy[0]
-            # show_image(yy[0][0], "original")
-            # plt.show()
-
-              # masked image
-            # import pdb; pdb.set_trace()
-            im_masked = x * (1 - mask)
-
-            # MAE reconstruction pasted with visible patches
-            im_paste = x * (1 - mask) + y * mask
-
-            # make the plt figure larger
-            plt.rcParams['figure.figsize'] = [24, 24]
-
-            plt.subplot(1, 4, 1)
-            show_image(x[0], "original")
-
-            plt.subplot(1, 4, 2)
-            show_image(im_masked[0], "masked")
-
-            plt.subplot(1, 4, 3)
-            show_image(y[0], "reconstruction")
-
-            plt.subplot(1, 4, 4)
-            show_image(im_paste[0], "reconstruction + visible")
-
-            plt.show()
             
            
        
-            results.extend(eval_output)
+            # results.extend(eval_output)
 
         # if is_dist_avail_and_initialized():
         #     dist.barrier()

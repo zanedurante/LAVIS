@@ -4,12 +4,13 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 # from base.base_dataset import TextVideoDataset
-from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionDataset
 import json
 import random
 from torchvision import transforms
-from lavis.datasets.datasets.base_dataset import BaseDataset
+# from lavis.datasets.datasets.base_dataset import BaseDataset
 import tensorflow_datasets as tfds
+import mediapy
+import tensorflow as tf
 
 def init_transform_dict(input_res=224,
                         center_crop=256,
@@ -26,7 +27,6 @@ def init_transform_dict(input_res=224,
     tsfm_dict = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(input_res, scale=randcrop_scale),
-            transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=color_jitter[0], saturation=color_jitter[1], hue=color_jitter[2]),
             normalize,
         ]),
@@ -69,7 +69,7 @@ def as_gif(images, path='temp.gif'):
   return gif_bytes
 
 
-class RobotDatasetAMLT(BaseDataset):
+class RobotDatasetAMLT():
     """
 
     """
@@ -107,22 +107,76 @@ class RobotDatasetAMLT(BaseDataset):
     
     def __getitem__(self, index):
 
+        # self.steps = self.episode_ds.flat_map(lambda x: x['steps'])
+        return self.episode_ds.skip(index).take(1)
+# /home/nikepupu/Desktop/amlt/LAVIS/lavis/datasets/datasets/robot_datasets.py
+if __name__ == "__main__":
+    # ds = RobotDatasetAMLT()
+    # print(len(ds))
+    # episodes = next(iter(ds[0]))
+    # frames = []
+    # for step in episodes['steps'].as_numpy_iterator():
+    #     frames.append(step['observation']['rgb'])
+    # print('frames', len(frames))
+    # print('frames: ', frames)
+    # mediapy.show_video(frames, fps=5)
 
-        video_path = ann["video"]
-        #video_path = video_path[1:] # removing the '.' prefix
-        start_frame = ann.get("start_frame", 0)
-        end_frame = ann.get("end_frame", -1)
+    DATASET_VERSION = '0.0.1'
+    DATASET_NAME = 'language_table_sim'  # CHANGEME: change this to load another dataset.
 
+    dataset_directories = {
+        'language_table': 'gs://gresearch/robotics/language_table',
+        'language_table_sim': 'gs://gresearch/robotics/language_table_sim',
+        'language_table_blocktoblock_sim': 'gs://gresearch/robotics/language_table_blocktoblock_sim',
+        'language_table_blocktoblock_4block_sim': 'gs://gresearch/robotics/language_table_blocktoblock_4block_sim',
+        'language_table_blocktoblock_oracle_sim': 'gs://gresearch/robotics/language_table_blocktoblock_oracle_sim',
+        'language_table_blocktoblockrelative_oracle_sim': 'gs://gresearch/robotics/language_table_blocktoblockrelative_oracle_sim',
+        'language_table_blocktoabsolute_oracle_sim': 'gs://gresearch/robotics/language_table_blocktoabsolute_oracle_sim',
+        'language_table_blocktorelative_oracle_sim': 'gs://gresearch/robotics/language_table_blocktorelative_oracle_sim',
+        'language_table_separate_oracle_sim': 'gs://gresearch/robotics/language_table_separate_oracle_sim',
+    }
+    import torch
+    import tqdm
+    dataset_path = os.path.join(dataset_directories[DATASET_NAME], DATASET_VERSION)
+    # load raw dataset --> replace this with tfds.load() on your
+    # local machine!
+    b = tfds.builder_from_directory(dataset_path)
+    ds = b.as_dataset(split='train')
 
-        video = self._load_video(video_path, start_frame, end_frame)
-        video = self.transforms(video)
-        caption = self.text_processor(ann["caption"])
+    def episode2steps(episode):
+        return episode['steps']
 
-        input_text = self._get_next_prompt() # Inherited from CaptionDataset
-        # print('video: ', video.shape)
-        # "image_id" is kept to stay compatible with the COCO evaluation format
+    def step_map_fn(step):
         return {
-            "video": video,
-            "text_input": input_text, # Input prompt
-            "text_output": caption, # Correct caption
+            'observation': {
+                'image': tf.image.resize(step['observation']['image'], (128, 128)),
+            },
+            'action': tf.concat([
+                step['action']['world_vector'],
+                step['action']['rotation_delta'],
+                step['action']['gripper_closedness_action'],
+            ], axis=-1)
         }
+
+    # convert RLDS episode dataset to individual steps & reformat
+    ds = ds.map(
+        episode2steps, num_parallel_calls=tf.data.AUTOTUNE).flat_map(lambda x: x)
+    # ds = ds.map(step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
+
+    # shuffle, repeat, pre-fetch, batch
+    # ds = ds.cache()         # optionally keep full dataset in memory
+    ds = ds.shuffle(100)    # set shuffle buffer size
+    # ds = ds.repeat()        # ensure that data never runs out
+    x_max = float('-inf')
+    y_max = float('-inf')
+    x_min = float('inf')
+    y_min = float('inf')
+    for i, batch in tqdm.tqdm(
+        enumerate(ds.prefetch(1).batch(1).as_numpy_iterator())):
+        # here you would add your Jax / PyTorch training code
+        # if i == 10000: break
+        x_max  = max(x_max, batch['action'][0][0])
+        y_max  = max(y_max, batch['action'][0][1])
+        x_min  = min(x_min, batch['action'][0][0])
+        y_min  = min(y_min, batch['action'][0][1])
+    print(x_max, y_max, x_min, y_min)

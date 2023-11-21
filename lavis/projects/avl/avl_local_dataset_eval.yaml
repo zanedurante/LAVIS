@@ -53,7 +53,7 @@ run:
   # logging
 
   amp: True
-  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/checkpoint_200.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/checkpoint_60.pth"
 
   evaluate: False 
   train_splits: ["train"]

@@ -115,7 +115,6 @@ class BlipImageTrainProcessor(BlipImageBaseProcessor):
                     scale=(min_scale, max_scale),
                     interpolation=InterpolationMode.BICUBIC,
                 ),
-                transforms.RandomHorizontalFlip(),
                 RandomAugment(
                     2,
                     5,
@@ -208,7 +207,6 @@ class Blip2ImageTrainProcessor(BlipImageBaseProcessor):
                     scale=(min_scale, max_scale),
                     interpolation=InterpolationMode.BICUBIC,
                 ),
-                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 self.normalize,
             ]

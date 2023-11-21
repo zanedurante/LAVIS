@@ -37,9 +37,9 @@ run:
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
-  batch_size_train: 5
-  batch_size_eval: 5
-  num_workers: 5
+  batch_size_train: 12
+  batch_size_eval: 12
+  num_workers: 12
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation

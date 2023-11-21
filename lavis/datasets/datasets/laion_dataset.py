@@ -43,7 +43,6 @@ if __name__ == "__main__":
     transform_train = transforms.Compose(
         [
             transforms.RandomResizedCrop(256, scale=(0.2, 1.0)),
-            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
         ]

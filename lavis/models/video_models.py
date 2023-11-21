@@ -837,7 +837,7 @@ class SpaceTimeTransformer(nn.Module):
 def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4):
     model = SpaceTimeTransformer(
         img_size=img_size,
-        num_frames=num_frames,
+        num_frames=1,
         time_init='zeros',
         freeze_first_frame=False,
         clip=True,

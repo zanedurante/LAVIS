@@ -25,7 +25,6 @@ def init_transform_dict(input_res=224,
     tsfm_dict = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(input_res, scale=randcrop_scale),
-            transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=color_jitter[0], saturation=color_jitter[1], hue=color_jitter[2]),
             normalize,
         ]),
@@ -321,12 +320,17 @@ class MinecraftVidDataset(TrioVideoCaptionDataset):
                 #     data["actions"].append([actions[start_frame:stop_frame]])
                 
                 captions = ""
+                num_actions = 0
                 assert len(actions[start_frame:stop_frame]) == self.total_num_frames
                 for idx , action in enumerate(actions[start_frame:stop_frame]):
                     text_actions = convert_to_text(action)
+                    captions += '[startaction]'
                     captions += ''.join(text_actions)
+                    num_actions += len(text_actions)
                     captions += '[endofaction]'
-                
+
+                if num_actions  <=  chuck_size_frames:
+                    continue
                 data["actions"].append(actions[start_frame:stop_frame])
                 data["caption"].append(captions)
                 data["start_frame"].append(start_frame)
