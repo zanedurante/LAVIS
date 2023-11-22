@@ -224,6 +224,7 @@ def process_file(metadata_dir, video_file, metadata_file, chunk_size_frames):
         for idx , action in enumerate(actions[start_frame:stop_frame]):
             text_actions = convert_to_text(action)
             num_actions += len(text_actions)
+            captions += '[startaction]'
             captions += ''.join(text_actions)
             captions += '[endofaction]'
 
@@ -257,8 +258,8 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
     with open(filesname) as f:
         files = f.readlines()
     files = [x.strip() for x in files]
-    video_files = sorted([f for f in files if f.endswith('.mp4')])[15000:17000]
-    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])[15000:17000]
+    video_files = sorted([f for f in files if f.endswith('.mp4')])[15000:20000]
+    metadata_files = sorted([f for f in files if f.endswith('.jsonl')])[15000:20000]
 
      # Create dictionaries to map base names to file names for quick lookup
     video_dict = {os.path.splitext(os.path.basename(f))[0]: f for f in video_files}
@@ -286,7 +287,7 @@ def load_metadata(chunk_size_frames=4, metadata_dir='./mnt/dataset_mnt/', filesn
         for i in range(0, len(paired_files), batch_size):
             yield paired_files[i:i + batch_size]
 
-    batch_size = 2000
+    batch_size = 5000
     batches = list(divide_into_batches(paired_files, batch_size))
 
     batch_index = 0

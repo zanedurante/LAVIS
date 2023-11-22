@@ -179,4 +179,6 @@ if __name__ == "__main__":
         y_max  = max(y_max, batch['action'][0][1])
         x_min  = min(x_min, batch['action'][0][0])
         y_min  = min(y_min, batch['action'][0][1])
+        print(batch['instruction'][0])
+        exit()
     print(x_max, y_max, x_min, y_min)

@@ -794,8 +794,10 @@ class SpaceTimeTransformer(nn.Module):
         # x = x + self.pos_embed[:, 1:, :]
         # x, mask, restore_mask = self.pos_drop(x)
         # print('before: ', x.shape)
-       
-        x, mask, ids_restore = self.random_masking(x, self.patch_drop_rate)
+        if self.training:
+            x, mask, ids_restore = self.random_masking(x, self.patch_drop_rate)
+        else:
+            x, mask, ids_restore = self.random_masking(x, 0.0)
         # print('after: ', x.shape)
         # cls_token = self.cls_token + self.pos_embed[:, :1, :]
         # cls_tokens = cls_token.expand(x.shape[0], -1, -1)
@@ -809,10 +811,10 @@ class SpaceTimeTransformer(nn.Module):
 
 
         # x = self.norm_pre(x)
-        # if self.training:
-        n = self.patches_per_frame_after_dropout # account for patch dropout
-        # else:
-        #     n = self.patches_per_frame # use all patches at inference
+        if self.training:
+            n = self.patches_per_frame_after_dropout # account for patch dropout
+        else:
+            n = self.patches_per_frame # use all patches at inference
 
         f = num_frames
         # import pdb; pdb.set_trace()

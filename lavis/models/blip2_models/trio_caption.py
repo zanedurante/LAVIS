@@ -194,25 +194,29 @@ class TrioT5(Blip2Base):
         pattern = r'(.*?\[endofaction\])'
         text_output_final = [ [s for s in re.split(pattern, text) if s] for text in text_output ]
         num_frames = self.num_frames
+
+       
+        preds = []
+        actions = []
+        masks = []
+        print('num_frames: ', num_frames)
         with autocast(dtype=torch.float16):
             frames_embeddings = []
             for i in range(num_frames):
                 features, mask, ids_restore =   self.visual_encoder(image[:, i, :, :, :].unsqueeze(1)) # (N, 1, C, H, W)
                 image_embeds = self.ln_vision(features)
                 pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                mae_loss = mae_loss +  self.visual_encoder.forward_loss(image[:, i, :, :, :].unsqueeze(1), pred, mask)
                 frames_embeddings.append(features)
+                preds.append(pred)
+                masks.append(mask)
 
             
             max_length = self.num_frames
 
             total_embeddings = torch.empty((features.shape[0], 0, 768), dtype=torch.float16).to(image.device)
-            
-            total_loss = 0.0
-            labels = torch.empty((features.shape[0], 0), dtype=torch.long).to(image.device)
 
             prediction_embeddings = torch.empty((features.shape[0], 0, 768), dtype=torch.float16).to(image.device)
-
+            action = ""
             for idx in range(max_length):  
                 
                 text_output_idx = [ text[idx] for text in text_output_final ]
@@ -248,21 +252,24 @@ class TrioT5(Blip2Base):
                     # print('next_token_logits: ', next_token_logits)
                     next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
 
-                    print('next token: ', next_token)
-                    print('logits: ', torch.softmax(next_token_logits, dim=-1)[0, 50486])
+                    # print('next token: ', next_token)
+                    # print('logits: ', torch.softmax(next_token_logits, dim=-1)[0, 50486])
                     result = self.tokenizer.decode(next_token[0], skip_special_tokens=False)
-                    print('result: ', result)
+                    # print('result: ', result)
+                    action += result
                     if result == '[endofaction]':
+                        actions.append(action)
                         break
 
                     next_token_embedding = self.model.model.get_input_embeddings()(next_token)
                     prediction_embeddings = torch.cat((prediction_embeddings, next_token_embedding), dim = 1 )
 
-                print('=============')
+                # print('=============')
                 
-            print('++++++++++++++++++++++')
+            # print('++++++++++++++++++++++')
             total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
-            # exit()
+        return {'preds': preds, 'actions': actions, 
+                'image': image, 'action_gt': text_output, 'masks': masks}
         
     def forward(self, samples):
 

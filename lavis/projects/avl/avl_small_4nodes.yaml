@@ -5,7 +5,6 @@
 
 model:
   arch: trio_t5
-
   model_type: flant5xl
   load_finetuned: False
   vit_model: "clip_b"
@@ -13,11 +12,11 @@ model:
   num_frames: 9
 
 datasets:
-  local_minecraft: # name of the dataset builder
+  minecraft: # name of the dataset builder
     data_type: videos
     total_num_frames: 9
     num_skip_frames: 0
-    scale: tiny
+    scale: small
     vis_processor:
         train:
           name: "trio_video_train"
@@ -37,10 +36,10 @@ run:
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
-  batch_size_train: 1
-  batch_size_eval: 1
-  num_workers: 1
-  # accum_grad_iters: 32
+  batch_size_train: 14
+  batch_size_eval: 14
+  num_workers: 14
+  # accum_grad_iters: 2
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -48,12 +47,13 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "output/Trio/Minecraft_Eval"
+  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft/small"
 
   # logging
+  log: wandb
 
   amp: True
-  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Minecraft/20231121090/checkpoint_80.pth"
+  resume_ckpt_path: null #"/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030194/checkpoint_15.pth"
 
   evaluate: False 
   train_splits: ["train"]
@@ -61,6 +61,6 @@ run:
   test_splits: ["train"]
 
   device: "cuda"
-  world_size: 1
+  world_size: 64
   dist_url: "env://"
   distributed: True
