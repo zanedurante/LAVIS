@@ -11,6 +11,7 @@ from torchvision import transforms
 import tensorflow_datasets as tfds
 import mediapy
 import tensorflow as tf
+import base64
 
 def init_transform_dict(input_res=224,
                         center_crop=256,
@@ -110,6 +111,11 @@ class RobotDatasetAMLT():
         # self.steps = self.episode_ds.flat_map(lambda x: x['steps'])
         return self.episode_ds.skip(index).take(1)
 # /home/nikepupu/Desktop/amlt/LAVIS/lavis/datasets/datasets/robot_datasets.py
+
+def decode_inst(inst):
+  """Utility to decode encoded language instruction"""
+  return bytes(inst[np.where(inst != 0)].tolist()).decode("utf-8") 
+
 if __name__ == "__main__":
     # ds = RobotDatasetAMLT()
     # print(len(ds))
@@ -136,49 +142,57 @@ if __name__ == "__main__":
         'language_table_separate_oracle_sim': 'gs://gresearch/robotics/language_table_separate_oracle_sim',
     }
     import torch
-    import tqdm
+    from tqdm import tqdm
     dataset_path = os.path.join(dataset_directories[DATASET_NAME], DATASET_VERSION)
     # load raw dataset --> replace this with tfds.load() on your
     # local machine!
     b = tfds.builder_from_directory(dataset_path)
-    ds = b.as_dataset(split='train')
+    ds = b.as_dataset(split='train[:10000]')
+    ds = tfds.as_numpy(ds)
 
     def episode2steps(episode):
         return episode['steps']
 
-    def step_map_fn(step):
-        return {
-            'observation': {
-                'image': tf.image.resize(step['observation']['image'], (128, 128)),
-            },
-            'action': tf.concat([
-                step['action']['world_vector'],
-                step['action']['rotation_delta'],
-                step['action']['gripper_closedness_action'],
-            ], axis=-1)
-        }
 
     # convert RLDS episode dataset to individual steps & reformat
-    ds = ds.map(
-        episode2steps, num_parallel_calls=tf.data.AUTOTUNE).flat_map(lambda x: x)
+    # ds = ds.map(
+    #     episode2steps, num_parallel_calls=tf.data.AUTOTUNE).flat_map(lambda x: x)
     # ds = ds.map(step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
 
     # shuffle, repeat, pre-fetch, batch
     # ds = ds.cache()         # optionally keep full dataset in memory
-    ds = ds.shuffle(100)    # set shuffle buffer size
+    # ds = ds.shuffle(100)    # set shuffle buffer size
     # ds = ds.repeat()        # ensure that data never runs out
-    x_max = float('-inf')
-    y_max = float('-inf')
-    x_min = float('inf')
-    y_min = float('inf')
-    for i, batch in tqdm.tqdm(
-        enumerate(ds.prefetch(1).batch(1).as_numpy_iterator())):
+    base_path = os.path.expanduser('~/dataset/language_table')
+
+    os.makedirs(base_path, exist_ok=True)
+
+    for idx, batch in tqdm(enumerate(ds), total=10000):
         # here you would add your Jax / PyTorch training code
         # if i == 10000: break
-        x_max  = max(x_max, batch['action'][0][0])
-        y_max  = max(y_max, batch['action'][0][1])
-        x_min  = min(x_min, batch['action'][0][0])
-        y_min  = min(y_min, batch['action'][0][1])
-        print(batch['instruction'][0])
-        exit()
-    print(x_max, y_max, x_min, y_min)
+        steps = batch['steps']
+        episode_id = batch['episode_id']
+        decoded_bytes = episode_id.decode('utf-8')
+        episode_id = decoded_bytes
+        # check if ~/dataset/language_table/ exist if not exist create it
+        
+        trajectory = []
+        obs = []
+        for step in steps:
+            
+            t = {
+                'observation': step['observation']['rgb'],
+                'action': step['action'],
+                'instruction': step['observation']['instruction'],
+                'is_first': step['is_first'],
+                'is_last': step['is_last'],
+                'is_terminal': step['is_terminal'],
+            }
+            obs.append(step['observation']['rgb'])
+           
+            trajectory.append(t)
+
+
+        # save the episode id and the step id to local as npz file
+        np.savez_compressed(os.path.join(base_path, f'{episode_id}.npz'), trajectory=trajectory)
+        
