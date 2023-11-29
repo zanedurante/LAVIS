@@ -85,6 +85,7 @@ class RobotTransformer(Blip2Base):
             tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
         
         tokenizer.add_tokens(['[ENDOFACTION]'])
+        tokenizer.add_tokens(['[TERMINAL]'])
         tokenizer.pad_token = tokenizer.eos_token
 
         return tokenizer
@@ -222,18 +223,18 @@ class RobotTransformer(Blip2Base):
            
             total_loss = 0.0
             labels = instructions.clone().to(image.device)
-
             for idx in range(max_length):  
                 action_input_ids = actions[:, idx, :].clone()         
                 action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
                 image_embeddings = frames_embeddings[idx]
                 total_embeddings = torch.cat((total_embeddings, image_embeddings, action_embeddings), dim = 1 )
                
+                image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
                 #prepend -100 to labels for image patches
-                labels = torch.cat((labels, 
-                                    torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100,
-                                      action_input_ids.clone()), dim=1)
-
+                labels = torch.cat((labels.long(), 
+                                    image_label.long(),
+                                      action_input_ids.clone().long()), dim=1)
+                # exit()
                 # Generate the next token
                 # TODO: replace image with image special token in label
                

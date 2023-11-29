@@ -57,10 +57,12 @@ class LanguageTableDataset(BaseDataset):
     def __init__(self):
         self.basedir = '/home/nikepupu/dataset/language_table'
         # load all npz files under the directory
-        self.episodes = []
+        # self.episodes = []
+        self.files = []
         for file in os.listdir(self.basedir):
             if file.endswith('.npz'):
-                self.episodes.append(np.load(os.path.join(self.basedir, file), allow_pickle=True))
+                self.files.append(os.path.join(self.basedir, file))
+                
         
         self.tokenizer =  AutoTokenizer.from_pretrained("facebook/opt-125m")
         for i in range(100):
@@ -75,13 +77,13 @@ class LanguageTableDataset(BaseDataset):
         
         
     def __len__(self):
-        return len(self.episodes)
+        return len(self.files)
     
     def collater(self, samples):
         obs_batch = []
         instrs_batch = []
         actions_batch = []
-        m_obs = 0
+        m_obs = 9
 
         # Function to pad a tensor to a target size
         def pad_tensor(input_tensor, target_size):
@@ -94,13 +96,9 @@ class LanguageTableDataset(BaseDataset):
             return padded_tensor
         
             # return F.pad(input_tensor, (0, 0, 0, 0, 0, 0, 0, pad_size), "constant", 0)
-        
-        for sample in samples:
-            
-            m_obs = max( torch.tensor(sample['observations']).shape[0], m_obs )
-
+ 
         for sample in samples:            
-            obs =  pad_tensor(torch.tensor(sample['observations']).unsqueeze(0), m_obs)
+            obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
             obs_batch.append(obs)
             instr = sample['instructions'][0]
             instr = ''.join(chr(id) for id in instr if id != 0)
@@ -174,7 +172,10 @@ class LanguageTableDataset(BaseDataset):
     
     
     def __getitem__(self, index):
-        trajectory = self.episodes[index]['trajectory']
+        file = self.files[index]
+        episode = np.load(os.path.join(self.basedir, file), allow_pickle=True)
+        trajectory = episode['trajectory']
+
         obs = []
         instrs = []
         actions = []
@@ -188,9 +189,9 @@ class LanguageTableDataset(BaseDataset):
             if not step['is_terminal']:
                 first_dim = self.get_bin_id(step['action'][0], -0.3, 0.3, 100)
                 second_dim = self.get_bin_id(step['action'][1], -0.3, 0.3, 100)
-                actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]]")
+                actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
-                actions.append('[TERMINAL]')
+                actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')
 
         # return obs, instrs, actions, is_firsts, is_lasts, is_terminals
     

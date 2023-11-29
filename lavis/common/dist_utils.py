@@ -213,8 +213,8 @@ def download_cached_file(url, check_hash=True, progress=False):
 
         return cached_file
 
-    # if is_main_process():
-    if is_main_node_process():
+    if is_main_process():
+    # if is_main_node_process():
         timm_hub.download_cached_file(url, check_hash, progress)
 
     if is_dist_avail_and_initialized():
