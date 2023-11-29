@@ -12,7 +12,7 @@ import tensorflow_datasets as tfds
 import mediapy
 import tensorflow as tf
 import base64
-
+import matplotlib.pyplot as plt
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # load raw dataset --> replace this with tfds.load() on your
     # local machine!
     b = tfds.builder_from_directory(dataset_path)
-    ds = b.as_dataset(split='train[:10000]')
+    ds = b.as_dataset(split='train[:1000]')
     ds = tfds.as_numpy(ds)
 
     def episode2steps(episode):
@@ -166,8 +166,9 @@ if __name__ == "__main__":
     base_path = os.path.expanduser('~/dataset/language_table')
 
     os.makedirs(base_path, exist_ok=True)
-
-    for idx, batch in tqdm(enumerate(ds), total=10000):
+    l_m = 0
+    l_dist = []
+    for idx, batch in tqdm(enumerate(ds), total=1000):
         # here you would add your Jax / PyTorch training code
         # if i == 10000: break
         steps = batch['steps']
@@ -178,6 +179,12 @@ if __name__ == "__main__":
         
         trajectory = []
         obs = []
+        l = len(steps)
+        l_m = max(l, l_m)
+        l_dist.append(l)
+
+        chunk_id = 0
+        chunk_size = 9
         for step in steps:
             
             t = {
@@ -191,8 +198,15 @@ if __name__ == "__main__":
             obs.append(step['observation']['rgb'])
            
             trajectory.append(t)
+            if len(trajectory) == chunk_size:
+                np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
+                trajectory = []
+                chunk_id += 1
 
 
-        # save the episode id and the step id to local as npz file
-        np.savez_compressed(os.path.join(base_path, f'{episode_id}.npz'), trajectory=trajectory)
-        
+        # # save the episode id and the step id to local as npz file
+        if len(trajectory) > 0:
+            np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
+    print(l_m)
+    plt.hist(l_dist, bins=100)
+    plt.show()

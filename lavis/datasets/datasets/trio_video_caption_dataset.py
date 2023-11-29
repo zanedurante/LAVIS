@@ -140,18 +140,24 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
         return get_transforms("train")
 
     def __getitem__(self, index):
+        while True:
+            try:
+                ann = self.metadata.iloc[index]
 
-        ann = self.metadata.iloc[index]
+                video_path = ann["video"]
+                start_frame = ann.get("start_frame", 0)
+                end_frame = ann.get("end_frame", -1)
 
-        video_path = ann["video"]
-        start_frame = ann.get("start_frame", 0)
-        end_frame = ann.get("end_frame", -1)
+                video = self._load_video(video_path, start_frame, end_frame)
+                video = self.transforms(video)
+                caption = self.text_processor(ann["caption"])
 
-        video = self._load_video(video_path, start_frame, end_frame)
-        video = self.transforms(video)
-        caption = self.text_processor(ann["caption"])
+                input_text = self._get_next_prompt() # Inherited from CaptionDataset
+                break
+            except:
+                index = np.random.randint(0, len(self.metadata))
 
-        input_text = self._get_next_prompt() # Inherited from CaptionDataset
+            
         # print('video: ', video.shape)
         # "image_id" is kept to stay compatible with the COCO evaluation format
         return {

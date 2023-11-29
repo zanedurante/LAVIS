@@ -82,7 +82,7 @@ def main():
     cfg = Config(parse_args())
 
     # use GCR distributed mode setup instead
-    #init_distributed_mode(cfg.run_cfg)
+    # init_distributed_mode(cfg.run_cfg)
     init_distributed_gcr()
 
     setup_seeds(cfg)

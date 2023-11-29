@@ -34,6 +34,38 @@ from lavis.datasets.datasets.video_caption_datasets import (
     VideoCaptionDataset,
     VideoCaptionEvalDataset,
 )
+
+from lavis.datasets.datasets.language_table_dataset import (
+    LanguageTableDataset
+)
+
+@registry.register_builder("language_table")
+class LanguageTableBuilderLocal(BaseDatasetBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = LanguageTableDataset
+        self.eval_dataset_cls = LanguageTableDataset
+
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/language_table/defaults_action.yaml", 
+    }
+
+    def build_datasets(self, cfg=None):
+        print("Assuming minecraft dataset is already stored -- skipping build!!")
+        datasets = {"train": None, "eval": None}
+
+        self.build_processors()
+        
+       
+
+        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+            is_train = split == "train"
+            datasets[split] = dataset_cls(
+            )
+
+        return datasets
+    
+
 @registry.register_builder("local_minecraft")
 class MinecraftBuilderLocal(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):
@@ -80,7 +112,6 @@ class MinecraftBuilderLocal(BaseDatasetBuilder):
             )
 
         return datasets
-    
 
 @registry.register_builder("minecraft")
 class MinecraftBuilder(BaseDatasetBuilder):

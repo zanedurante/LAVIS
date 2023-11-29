@@ -209,7 +209,7 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
     def _load_metadata(self):
         assert self.scale in ['small', 'medium', 'large', 'tiny']
         # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_{self.scale}.csv"
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9.csv"
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         # print(self.metadata)
         # exit()
@@ -220,19 +220,24 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
     
     def __getitem__(self, index):
 
-        ann = self.metadata.iloc[index]
+        while True:
+            try:
+                ann = self.metadata.iloc[index]
 
-        video_path = ann["video"]
-        #video_path = video_path[1:] # removing the '.' prefix
-        start_frame = ann.get("start_frame", 0)
-        end_frame = ann.get("end_frame", -1)
+                video_path = ann["video"]
+                # video_path = video_path[1:] # removing the '.' prefix
+                start_frame = ann.get("start_frame", 0)
+                end_frame = ann.get("end_frame", -1)
 
 
-        video = self._load_video(video_path, start_frame, end_frame)
-        video = self.transforms(video)
-        caption = self.text_processor(ann["caption"])
+                video = self._load_video(video_path, start_frame, end_frame)
+                video = self.transforms(video)
+                caption = self.text_processor(ann["caption"])
 
-        input_text = self._get_next_prompt() # Inherited from CaptionDataset
+                input_text = self._get_next_prompt() # Inherited from CaptionDataset
+                break
+            except:
+                index = np.random.randint(0, len(self.metadata))
         # print('video: ', video.shape)
         # "image_id" is kept to stay compatible with the COCO evaluation format
         return {

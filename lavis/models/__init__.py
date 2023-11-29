@@ -37,6 +37,7 @@ from lavis.models.blip2_models.blip2_t5 import Blip2T5
 from lavis.models.blip2_models.blip2_qformer import Blip2Qformer
 from lavis.models.blip2_models.blip2_image_text_matching import Blip2ITM
 from lavis.models.blip2_models.trio_caption import TrioT5
+from lavis.models.blip2_models.robot_transformer import RobotTransformer
 from lavis.models.blip2_models.mae_model import MaskedAutoencoderViT
 
 from lavis.models.blip2_models.blip2_t5_instruct import Blip2T5Instruct
@@ -93,7 +94,8 @@ __all__ = [
     "VisionTransformerEncoder",
     "XBertLMHeadDecoder",
     "GPTDialogue",
-    "MaskedAutoencoderViT"
+    "MaskedAutoencoderViT",
+    "RobotTransformer"
 ]
 
 
