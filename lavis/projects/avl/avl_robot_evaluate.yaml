@@ -4,7 +4,8 @@
  # For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
 
 model:
-  arch: trio_t5
+  arch: robot_transformer
+
   model_type: flant5xl
   load_finetuned: False
   vit_model: "clip_b"
@@ -12,21 +13,8 @@ model:
   num_frames: 9
 
 datasets:
-  minecraft: # name of the dataset builder
+  language_table: # name of the dataset builder
     data_type: videos
-    total_num_frames: 9
-    num_skip_frames: 0
-    scale: small
-    vis_processor:
-        train:
-          name: "trio_video_train"
-        eval:
-          name: "trio_video_eval"
-    text_processor:
-        train:
-          name: "blip_caption"
-        eval:
-          name: "blip_caption"
 
 run:
   task: video_captioning # TODO: Add associated metrics
@@ -36,10 +24,10 @@ run:
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
-  batch_size_train: 12
-  batch_size_eval: 12
-  num_workers: 12
-  # accum_grad_iters: 2
+  batch_size_train: 1
+  batch_size_eval: 1
+  num_workers: 1
+  # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -47,20 +35,20 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft/small"
+  output_dir: "output/Trio/Language_Table_Eval"
 
   # logging
-  log: wandb
+  # log: wandb
 
-  amp: True
-  resume_ckpt_path: null #"/home/nikepupu/Desktop/LAVIS/lavis/output/Trio/Minecraft/20231030194/checkpoint_15.pth"
+  amp: False
+  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130232/checkpoint_70.pth"
 
-  evaluate: False 
+  evaluate: True 
   train_splits: ["train"]
   valid_splits: ["train"]
   test_splits: ["train"]
 
   device: "cuda"
-  world_size: 32
+  world_size: 1
   dist_url: "env://"
   distributed: True

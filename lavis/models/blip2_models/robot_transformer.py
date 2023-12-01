@@ -77,6 +77,7 @@ class RobotTransformer(Blip2Base):
       
         self.model = OPTForCausalLM.from_pretrained("facebook/opt-125m")#TransfoXLLMHeadModel(configuration)
         self.model.resize_token_embeddings(len(self.tokenizer))
+        self.num_frames = num_frames
      
    
     def init_tokenizer(self, truncation_side="right"):
@@ -91,25 +92,32 @@ class RobotTransformer(Blip2Base):
         return tokenizer
     
     def generate(self, samples):
-        print('start generate')
-        if "image" in samples.keys():
-            image = samples["image"]
-        elif "video" in samples.keys():
-            image = samples["video"]
-        else:
-            raise ValueError("No image or video input found in input dict.")
-        
-        text_output = samples["text_output"]
-        pattern = r'(.*?\[endofaction\])'
-        text_output_final = [ [s for s in re.split(pattern, text) if s] for text in text_output ]
-        num_frames = self.num_frames
+        image = samples["video"]
+        instructions = samples["instructions"].to(image.device)
 
-       
+        actions_gt = samples["actions"].to(image.device)
+        print(actions_gt)
+        # exit('action gt')
+        
+        flat_tokens = [token for sublist in samples["actions"][0] for token in sublist]
+        print(flat_tokens)
+        decoded_string = self.tokenizer.decode(flat_tokens)
+        print(decoded_string)
+
+        max_length = image.shape[1]
+        # print('start training')
+        # print(samples.keys())
+        
+        instruction_embeds = self.model.model.get_input_embeddings()(instructions)
+        total_embeddings = torch.empty((instruction_embeds.shape[0], 0, 768), dtype=torch.bfloat16).to(image.device)
+        total_embeddings = torch.cat((total_embeddings, instruction_embeds), dim = 1 )
+        max_length = num_frames = self.num_frames
+
         preds = []
         actions = []
         masks = []
-        print('num_frames: ', num_frames)
-        with autocast(dtype=torch.float16):
+
+        with autocast(dtype=torch.bfloat16):
             frames_embeddings = []
             for i in range(num_frames):
                 features, mask, ids_restore =   self.visual_encoder(image[:, i, :, :, :].unsqueeze(1)) # (N, 1, C, H, W)
@@ -119,36 +127,18 @@ class RobotTransformer(Blip2Base):
                 preds.append(pred)
                 masks.append(mask)
 
-            
-            max_length = self.num_frames
 
-            total_embeddings = torch.empty((features.shape[0], 0, 768), dtype=torch.float16).to(image.device)
-
-            prediction_embeddings = torch.empty((features.shape[0], 0, 768), dtype=torch.float16).to(image.device)
+            prediction_embeddings = instruction_embeds.clone()
             action = ""
             for idx in range(max_length):  
                 
-                text_output_idx = [ text[idx] for text in text_output_final ]
-                
-                # print('text_output_idx: ', text_output_idx)
-                target_tokens = self.tokenizer(
-                    text_output_idx,
-                    padding='longest',
-                    truncation=True,
-                    max_length=self.num_frames * 10,
-                    add_special_tokens = True,
-                    # skip_special_tokens=False,
-                    return_tensors="pt"
-                ).to(image.device)
-
-                input_ids = target_tokens.input_ids
-            
-                text_embeddings = self.model.model.get_input_embeddings()(input_ids)
-                # image_embeddings = self.xl_proj(frames_embeddings[idx])
                 image_embeddings = frames_embeddings[idx]
+                action_input_ids = actions_gt[:, idx, :].clone()         
+                action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
                 # print(image_embeddings.shape)
                 
                 prediction_embeddings = torch.cat((total_embeddings, image_embeddings), dim = 1 )
+                # prediction_embeddings = torch.cat((total_embeddings, image_embeddings), dim = 1 )
     
                 # Generate the next token
                 # TODO: replace image with image special token in label
@@ -164,21 +154,21 @@ class RobotTransformer(Blip2Base):
                     # print('next token: ', next_token)
                     # print('logits: ', torch.softmax(next_token_logits, dim=-1)[0, 50486])
                     result = self.tokenizer.decode(next_token[0], skip_special_tokens=False)
-                    # print('result: ', result)
+                    print('result: ', result)
                     action += result
-                    if result == '[endofaction]':
+                    if result == '[ENDOFACTION]':
                         actions.append(action)
                         break
 
                     next_token_embedding = self.model.model.get_input_embeddings()(next_token)
                     prediction_embeddings = torch.cat((prediction_embeddings, next_token_embedding), dim = 1 )
 
-                # print('=============')
-                
-            # print('++++++++++++++++++++++')
-            total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
+                print('=============')
+                total_embeddings = torch.cat((total_embeddings, image_embeddings, action_embeddings), dim = 1 )
+            print('++++++++++++++++++++++')
+          
         return {'preds': preds, 'actions': actions, 
-                'image': image, 'action_gt': text_output, 'masks': masks}
+                'image': image, 'action_gt': actions_gt[0], 'masks': masks}
         
     def forward(self, samples):
         
@@ -186,23 +176,16 @@ class RobotTransformer(Blip2Base):
         instructions = samples["instructions"].to(image.device)
 
         actions = samples["actions"].to(image.device)
-        # actions = [action.input_ids for action in actions ]
-        # actions = torch.stack(actions, dim=0).to(image.device)
-        # print('actions: ', actions)
-        # # print('actions: ', actions.shape)
-        # exit()
-        
-    
 
         max_length = image.shape[1]
         # print('start training')
         # print(samples.keys())
         
         instruction_embeds = self.model.model.get_input_embeddings()(instructions)
-        total_embeddings = torch.empty((instruction_embeds.shape[0], 0, 768), dtype=torch.float16).to(image.device)
+        total_embeddings = torch.empty((instruction_embeds.shape[0], 0, 768), dtype=torch.bfloat16).to(image.device)
         total_embeddings = torch.cat((total_embeddings, instruction_embeds), dim = 1 )
         
-        with autocast(dtype=torch.float16):
+        with autocast(dtype=torch.bfloat16):
             mae_loss = 0.0
             frames_embeddings = []
             b, t, c, h, w = image.shape

@@ -62,7 +62,7 @@ class VideoCaptionTask(BaseTask):
             if i >= iters_per_epoch:
                 break
             samples = next(data_loader)
-            print(samples['text_output'])
+            # print(samples['text_output'])
             if i == 0:
                 continue
             samples = prepare_sample(samples, cuda_enabled=cuda_enabled)
@@ -75,7 +75,7 @@ class VideoCaptionTask(BaseTask):
                 pred  = eval_output["preds"][index]
                 image = eval_output["image"][:, index, :, :, :]
                 mask = eval_output["masks"][index]
-                actions = eval_output["actions"][index]
+                # actions = eval_output["actions"][index]
                
                 mask = mask.unsqueeze(-1).repeat(1, 1, model.visual_encoder.patch_embed.patch_size[0]**2 *3)  # (N, H*W, p*p*3)
 
@@ -106,14 +106,15 @@ class VideoCaptionTask(BaseTask):
                 im_paste = x * (1 - mask) + y * mask
 
                 plt.subplot(4, 3, 1+index*3)
-                show_image(x, actions.split('[endofaction]')[index].replace('</s>', ''))
+                # show_image(x, actions.split('[endofaction]')[index].replace('</s>', ''))
+                show_image(x, 'original')
 
                 plt.subplot(4, 3, 2+index*3)
                 # import pdb; pdb.set_trace()
                 show_image(im_masked[0][0], "masked")
 
                 plt.subplot(4, 3, 3+index*3)
-                show_image(y[0], "reconstruction")
+                show_image(y[0].float(), "reconstruction")
 
                 # plt.subplot(9, 4, 4+index*4)
                 # show_image(im_paste[0][0], "reconstruction + visible")

@@ -195,9 +195,9 @@ class TrioT5(Blip2Base):
         text_output_final = [ [s for s in re.split(pattern, text) if s] for text in text_output ]
         num_frames = self.num_frames
 
-       
-        preds = []
         actions = []
+        
+        preds = []
         masks = []
         print('num_frames: ', num_frames)
         with autocast(dtype=torch.float16):

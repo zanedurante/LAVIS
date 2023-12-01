@@ -55,7 +55,7 @@ class LanguageTableDataset(BaseDataset):
 
     """
     def __init__(self):
-        self.basedir = '/home/nikepupu/dataset/language_table'
+        self.basedir = '/home/nikepupu/dataset/language_table_10k'
         # load all npz files under the directory
         # self.episodes = []
         self.files = []
@@ -116,7 +116,7 @@ class LanguageTableDataset(BaseDataset):
         instrs_batch = instrs_batch.input_ids
         max_len = max([len(action) for action in actions_batch])
         for action_lst in actions_batch:
-            action_lst.extend(['[TERMINAL]'] * (max_len - len(action_lst)))
+            action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
         # print(actions_batch)
         # actions_batch = self.tokenizer(actions_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
         # print('action batch')
@@ -124,7 +124,7 @@ class LanguageTableDataset(BaseDataset):
         a_batch = []
         for action_batch in actions_batch:
             tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
-            tmp = tmp.input_ids[:,1:-1]
+            tmp = tmp.input_ids
             a_batch.append(tmp)
 
         a_batch = torch.stack(a_batch, dim=0) 
@@ -187,8 +187,8 @@ class LanguageTableDataset(BaseDataset):
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
             if not step['is_terminal']:
-                first_dim = self.get_bin_id(step['action'][0], -0.3, 0.3, 100)
-                second_dim = self.get_bin_id(step['action'][1], -0.3, 0.3, 100)
+                first_dim = self.get_bin_id(step['action'][0], -0.03, 0.03, 100)
+                second_dim = self.get_bin_id(step['action'][1], -0.03, 0.03, 100)
                 actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')

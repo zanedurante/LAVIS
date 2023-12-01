@@ -848,10 +848,10 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
     # model.pre_logits = nn.Identity()
     # ftr_dim = model.embed_dim
     # # init with weights from eva_vit_g
-    # vit_model = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
+    vit_model = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
 
-    # vit_checkpoint = vit_model.state_dict()
-    # ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
+    vit_checkpoint = vit_model.state_dict()
+    ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
 
     # nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
     # for block in model.blocks:

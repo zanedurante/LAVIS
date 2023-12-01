@@ -168,6 +168,11 @@ if __name__ == "__main__":
     os.makedirs(base_path, exist_ok=True)
     l_m = 0
     l_dist = []
+    x_max = float('-inf')
+    x_min = float('inf')
+
+    y_max = float('-inf')
+    y_min = float('inf')
     for idx, batch in tqdm(enumerate(ds), total=1000):
         # here you would add your Jax / PyTorch training code
         # if i == 10000: break
@@ -185,6 +190,7 @@ if __name__ == "__main__":
 
         chunk_id = 0
         chunk_size = 9
+        
         for step in steps:
             
             t = {
@@ -195,7 +201,16 @@ if __name__ == "__main__":
                 'is_last': step['is_last'],
                 'is_terminal': step['is_terminal'],
             }
-            obs.append(step['observation']['rgb'])
+            instruction = step['observation']['instruction']
+            instruction = ''.join(chr(id) for id in instruction if id != 0)
+            x_max = max(x_max, step['action'][0])
+            x_min = min(x_min, step['action'][0])
+
+            y_max = max(y_max, step['action'][1])
+            y_min = min(y_min, step['action'][1])
+        #     print(instruction, 'is last: ', step['is_last'], 'is_first: ', step['is_first'], 'is_terminal: ', step['is_terminal'])
+        # print('====')
+            # obs.append(step['observation']['rgb'])
            
             trajectory.append(t)
             if len(trajectory) == chunk_size:
@@ -204,9 +219,14 @@ if __name__ == "__main__":
                 chunk_id += 1
 
 
-        # # save the episode id and the step id to local as npz file
+    #     # # save the episode id and the step id to local as npz file
         if len(trajectory) > 0:
             np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
-    print(l_m)
-    plt.hist(l_dist, bins=100)
-    plt.show()
+    # print(l_m)
+    # plt.hist(l_dist, bins=100)
+    # plt.show()
+print(x_max)
+print(x_min)
+
+print(y_min)
+print(y_max)
