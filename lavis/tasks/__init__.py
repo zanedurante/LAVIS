@@ -18,6 +18,7 @@ from lavis.tasks.vqa_reading_comprehension import VQARCTask, GQARCTask
 from lavis.tasks.dialogue import DialogueTask
 from lavis.tasks.text_to_image_generation import TextToImageGenerationTask
 from lavis.tasks.video_captioning import VideoCaptionTask
+from lavis.tasks.roboticsLanguageTable import RoboticsLanguageTable
 
 def setup_task(cfg):
     assert "task" in cfg.run_cfg, "Task name must be provided."
@@ -45,4 +46,5 @@ __all__ = [
     "ImageTextPretrainTask",
     "DialogueTask",
     "TextToImageGenerationTask",
+    "RoboticsLanguageTable"
 ]

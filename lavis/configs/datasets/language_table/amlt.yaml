@@ -6,6 +6,5 @@
 # TODO: Make actual yaml here, this is just a copy of coco right now so it thinks it's loaded
 
 datasets:
-  language_table: # name of the dataset builder
-    # data_dir: ${env.data_dir}/datasets
-    data_type: videos # [images|videos|features] 
+  language_tableamlt:
+    data_type: videos

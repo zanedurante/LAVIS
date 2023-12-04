@@ -50,23 +50,21 @@ def get_transforms(split):
         return init_transform_dict()[split]
     else:
         raise ValueError('Split {} not supported.'.format(split))
-    
-class LanguageTableDatasetTrain(BaseDataset):
+class LanguageTableDatasetAMLTTrain(BaseDataset):
     """
 
     """
     def __init__(self):
-        self.basedir = '/home/nikepupu/dataset/language_table_1k'
+        self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
-        self.files = []
-        for file in os.listdir(self.basedir):
-            if file.endswith('.npz'):
-                self.files.append(os.path.join(self.basedir, file))
+        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+            self.files = f.read().splitlines() 
+        self.files = sorted(self.files)
+        total = len(self.files)
+        self.files = self.files[:int(total * 0.9)]
                 
         self.base_model_name = "facebook/opt-1.3b"
-        total = len(self.files)
-        self.files = self.files[:int(total * 0.1)]
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
         for i in range(100):
             self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
@@ -209,22 +207,21 @@ class LanguageTableDatasetTrain(BaseDataset):
             "action": actions,
         }
 
-class LanguageTableDatasetEval(BaseDataset):
+
+class LanguageTableDatasetAMLTEval(BaseDataset):
     """
 
     """
     def __init__(self):
-        self.basedir = '/home/nikepupu/dataset/language_table_1k'
+        self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
-        self.files = []
-        for file in os.listdir(self.basedir):
-            if file.endswith('.npz'):
-                self.files.append(os.path.join(self.basedir, file))
-
+        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+            self.files = f.read().splitlines() 
+        self.files = sorted(self.files)
         total = len(self.files)
         self.files = self.files[int(total * 0.9):]
-
+                
         self.base_model_name = "facebook/opt-1.3b"
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
         for i in range(100):
@@ -368,13 +365,14 @@ class LanguageTableDatasetEval(BaseDataset):
             "action": actions,
         }
 
-if __name__ == "__main__":
-    ds = LanguageTableDataset()
-    print(len(ds))
-    instr = ds[1][1]
-    l = len(instr)
-    for i in range(l):
+
+# if __name__ == "__main__":
+#     ds = LanguageTableDataset()
+#     print(len(ds))
+#     instr = ds[1][1]
+#     l = len(instr)
+#     for i in range(l):
         
-        output = ''.join(chr(id) for id in instr[i])
-        print(output)
+#         output = ''.join(chr(id) for id in instr[i])
+#         print(output)
     

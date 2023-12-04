@@ -164,7 +164,7 @@ if __name__ == "__main__":
     # ds = ds.shuffle(100)    # set shuffle buffer size
     # ds = ds.repeat()        # ensure that data never runs out
     base_path = os.path.expanduser('~/dataset/language_table')
-
+    
     os.makedirs(base_path, exist_ok=True)
     l_m = 0
     l_dist = []
@@ -196,6 +196,8 @@ if __name__ == "__main__":
             t = {
                 'observation': step['observation']['rgb'],
                 'action': step['action'],
+                'effector_target_translation': step['effector_target_translation'],
+                'effector_translation': step['effector_translation'],
                 'instruction': step['observation']['instruction'],
                 'is_first': step['is_first'],
                 'is_last': step['is_last'],
@@ -210,7 +212,7 @@ if __name__ == "__main__":
             y_min = min(y_min, step['action'][1])
         #     print(instruction, 'is last: ', step['is_last'], 'is_first: ', step['is_first'], 'is_terminal: ', step['is_terminal'])
         # print('====')
-            # obs.append(step['observation']['rgb'])
+        # obs.append(step['observation']['rgb'])
            
             trajectory.append(t)
             if len(trajectory) == chunk_size:

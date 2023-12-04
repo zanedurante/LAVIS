@@ -237,7 +237,7 @@ class MinecraftVidDatasetAMLT(TrioVideoCaptionDataset):
                 input_text = self._get_next_prompt() # Inherited from CaptionDataset
                 break
             except:
-                index = np.random.randint(0, len(self.metadata))
+                index = (index+1) % len(self.metadata)
         # print('video: ', video.shape)
         # "image_id" is kept to stay compatible with the COCO evaluation format
         return {

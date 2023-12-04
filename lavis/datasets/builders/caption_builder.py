@@ -36,22 +36,26 @@ from lavis.datasets.datasets.video_caption_datasets import (
 )
 
 from lavis.datasets.datasets.language_table_dataset import (
-    LanguageTableDataset
+    LanguageTableDatasetTrain, LanguageTableDatasetEval
+)
+
+from lavis.datasets.datasets.language_table_datasetamlt import (
+    LanguageTableDatasetAMLTTrain, LanguageTableDatasetAMLTEval
 )
 
 @registry.register_builder("language_table")
 class LanguageTableBuilderLocal(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.train_dataset_cls = LanguageTableDataset
-        self.eval_dataset_cls = LanguageTableDataset
+        self.train_dataset_cls = LanguageTableDatasetTrain
+        self.eval_dataset_cls = LanguageTableDatasetEval
 
     DATASET_CONFIG_DICT = {
         "default": "configs/datasets/language_table/defaults_action.yaml", 
     }
 
     def build_datasets(self, cfg=None):
-        print("Assuming minecraft dataset is already stored -- skipping build!!")
+        print("Assuming language table dataset is already stored -- skipping build!!")
         datasets = {"train": None, "eval": None}
 
         self.build_processors()
@@ -65,6 +69,31 @@ class LanguageTableBuilderLocal(BaseDatasetBuilder):
 
         return datasets
     
+@registry.register_builder("language_tableamlt")
+class LanguageTableBuilderAMLT(BaseDatasetBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = LanguageTableDatasetAMLTTrain
+        self.eval_dataset_cls = LanguageTableDatasetAMLTEval
+
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/language_table/amlt.yaml", 
+    }
+
+    def build_datasets(self, cfg=None):
+        print("Assuming language table dataset is already stored -- skipping build!!")
+        datasets = {"train": None, "eval": None}
+
+        self.build_processors()
+        
+       
+
+        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+            is_train = split == "train"
+            datasets[split] = dataset_cls(
+            )
+
+        return datasets
 
 @registry.register_builder("local_minecraft")
 class MinecraftBuilderLocal(BaseDatasetBuilder):

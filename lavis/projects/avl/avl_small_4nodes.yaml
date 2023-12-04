@@ -47,7 +47,7 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft/small"
+  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft/4nodes"
 
   # logging
   log: wandb

@@ -24,8 +24,11 @@ from transformers import BertTokenizer
 # TODO: Allow for better fp16 support since the model is frozen. Right now fp32 is used for the model.
 # https://github.com/huggingface/transformers/issues/14189#issuecomment-961571628
 
-from transformers import  AutoTokenizer, GPT2LMHeadModel,  OPTForCausalLM
+from transformers import  AutoTokenizer, AutoModelForCausalLM
 import re
+
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+from huggingface_hub import login
 
 @registry.register_model("robot_transformer")
 class RobotTransformer(Blip2Base):
@@ -67,21 +70,39 @@ class RobotTransformer(Blip2Base):
         apply_lemmatizer: when set to True, postprocess predict_answers() result with lemmas.
         """
         super().__init__()
+        
+        self.base_model_name = "facebook/opt-1.3b"
 
-        self.tokenizer = self.init_tokenizer(truncation_side="right")
+        self.tokenizer = self.init_tokenizer()
         self.start_token_id = self.tokenizer.bos_token_id
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames
         )
- 
-      
-        self.model = OPTForCausalLM.from_pretrained("facebook/opt-125m")#TransfoXLLMHeadModel(configuration)
+
+        self.model = AutoModelForCausalLM.from_pretrained(self.base_model_name ,
+                                                          torch_dtype=torch.bfloat16)
         self.model.resize_token_embeddings(len(self.tokenizer))
+        # self.model = self.model.half()
         self.num_frames = num_frames
+
+        peft_config = LoraConfig(
+                    task_type="CAUSAL_LM",
+                    inference_mode=False, r=8, 
+                    lora_alpha=8, lora_dropout=0.1,
+                    target_modules=["q_proj", "v_proj"],
+                    modules_to_save=["embed_tokens", "lm_head"]
+        )
+
+
+        self.model = get_peft_model(self.model, peft_config)
+        self.model.print_trainable_parameters()
+
+        self.model_size = 2048
+        self.linear_projection = nn.Linear(768, self.model_size).to(torch.bfloat16)
      
    
-    def init_tokenizer(self, truncation_side="right"):
-        tokenizer =  AutoTokenizer.from_pretrained("facebook/opt-125m")
+    def init_tokenizer(self):
+        tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
         for i in range(100):
             tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
         
@@ -172,7 +193,7 @@ class RobotTransformer(Blip2Base):
         
     def forward(self, samples):
         
-        image = samples["video"]
+        image = samples["video"].to(torch.bfloat16)
         instructions = samples["instructions"].to(image.device)
 
         actions = samples["actions"].to(image.device)
@@ -181,57 +202,61 @@ class RobotTransformer(Blip2Base):
         # print('start training')
         # print(samples.keys())
         
-        instruction_embeds = self.model.model.get_input_embeddings()(instructions)
-        total_embeddings = torch.empty((instruction_embeds.shape[0], 0, 768), dtype=torch.bfloat16).to(image.device)
-        total_embeddings = torch.cat((total_embeddings, instruction_embeds), dim = 1 )
-        
-        with autocast(dtype=torch.bfloat16):
-            mae_loss = 0.0
-            frames_embeddings = []
-            b, t, c, h, w = image.shape
-            video_batch = image.reshape(b * t, c, h, w)
-
-            features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
-            image_embeds = self.ln_vision(features)
-            pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-            mae_loss = mae_loss +  self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
-
-            image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
-
-            for i in range(t):
-                frames_embeddings.append(image_embeds[:, i, :, :])
-            
-
-            # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
-           
-            total_loss = 0.0
-            labels = instructions.clone().to(image.device)
-            for idx in range(max_length):  
-                action_input_ids = actions[:, idx, :].clone()         
-                action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
-                image_embeddings = frames_embeddings[idx]
-                total_embeddings = torch.cat((total_embeddings, image_embeddings, action_embeddings), dim = 1 )
-               
-                image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-                #prepend -100 to labels for image patches
-                labels = torch.cat((labels.long(), 
-                                    image_label.long(),
-                                      action_input_ids.clone().long()), dim=1)
-                # exit()
-                # Generate the next token
-                # TODO: replace image with image special token in label
-               
-            output = self.model(
-                inputs_embeds = total_embeddings,
-                labels = labels,
-            )
-            loss = output.loss
-            total_loss += loss
-        
-
        
-        total_loss = total_loss + mae_loss
-        return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask}
+        
+        # with autocast(dtype=torch.float16):
+        instruction_embeds = self.model.model.get_input_embeddings()(instructions)
+        # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
+        total_embeddings = instruction_embeds.clone()
+        mae_loss = 0.0
+        frames_embeddings = []
+        b, t, c, h, w = image.shape
+        video_batch = image.reshape(b * t, c, h, w)
+
+        features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
+        image_embeds = self.ln_vision(features)
+        pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+        mae_loss = mae_loss +  self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+
+        image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
+
+        image_embeds = self.linear_projection(image_embeds)
+        # print('iamge image embeds: ')
+        # print(image_embeds.shape)
+        # exit()
+
+        for i in range(t):
+            frames_embeddings.append(image_embeds[:, i, :, :])
+        
+
+        # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+        
+        total_loss = 0.0
+        labels = instructions.clone().to(image.device)
+        for idx in range(max_length):  
+            action_input_ids = actions[:, idx, :].clone()         
+            action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
+            image_embeddings = frames_embeddings[idx]
+            total_embeddings = torch.cat((total_embeddings, image_embeddings, action_embeddings), dim = 1 )
+            
+            image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+            #prepend -100 to labels for image patches
+            labels = torch.cat((labels.long(), 
+                                image_label.long(),
+                                    action_input_ids.clone().long()), dim=1)
+            # exit()
+            # Generate the next token
+            # TODO: replace image with image special token in label
+            
+        output = self.model(
+            inputs_embeds = total_embeddings,
+            labels = labels,
+        )
+        loss = output.loss
+        
+
+        total_loss = loss + mae_loss
+        return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask, 'predict_los': loss}
 
 
     @classmethod

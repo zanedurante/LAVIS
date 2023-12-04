@@ -440,7 +440,7 @@ class SpaceTimeTransformer(nn.Module):
         else:
             self.attention_style = attention_style
 
-        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
+        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-5)
         if clip:
             norm_layer = partial(nn.LayerNorm, eps=1e-5, elementwise_affine=True)
         print("######USING ATTENTION STYLE: ", self.attention_style)
@@ -520,10 +520,9 @@ class SpaceTimeTransformer(nn.Module):
         # --------------------------------------------------------------------------
         
         embed_dim = self.embed_dim
-        depth = 24
-        num_heads = 16
+        
         decoder_embed_dim = 768
-        decoder_depth = 7
+        decoder_depth = 5
         decoder_num_heads = 16
         mlp_ratio = 4.
         norm_layer = nn.LayerNorm
@@ -852,6 +851,7 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
 
     vit_checkpoint = vit_model.state_dict()
     ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
+    model = model.to(torch.bfloat16)
 
     # nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
     # for block in model.blocks:
@@ -903,7 +903,7 @@ def create_eva_vit_g_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,
         mlp_ratio=4.3637,
         qkv_bias=True,
         drop_path_rate=drop_path_rate,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-5),
         num_frames=num_frames,
         time_init='zeros',
         freeze_first_frame=True,
