@@ -9,7 +9,7 @@ import random
 from torchvision import transforms
 # from lavis.datasets.datasets.base_dataset import BaseDataset
 import tensorflow_datasets as tfds
-import mediapy
+# import mediapy
 import tensorflow as tf
 import base64
 import matplotlib.pyplot as plt
@@ -147,7 +147,8 @@ if __name__ == "__main__":
     # load raw dataset --> replace this with tfds.load() on your
     # local machine!
     b = tfds.builder_from_directory(dataset_path)
-    ds = b.as_dataset(split='train[:1000]')
+    ds = b.as_dataset(split='train')
+    total = len(ds)
     ds = tfds.as_numpy(ds)
 
     def episode2steps(episode):
@@ -163,7 +164,7 @@ if __name__ == "__main__":
     # ds = ds.cache()         # optionally keep full dataset in memory
     # ds = ds.shuffle(100)    # set shuffle buffer size
     # ds = ds.repeat()        # ensure that data never runs out
-    base_path = os.path.expanduser('~/dataset/language_table')
+    base_path = '/mnt/languagetablesimfull'
     
     os.makedirs(base_path, exist_ok=True)
     l_m = 0
@@ -173,7 +174,7 @@ if __name__ == "__main__":
 
     y_max = float('-inf')
     y_min = float('inf')
-    for idx, batch in tqdm(enumerate(ds), total=1000):
+    for idx, batch in tqdm(enumerate(ds), total=total):
         # here you would add your Jax / PyTorch training code
         # if i == 10000: break
         steps = batch['steps']
@@ -196,8 +197,8 @@ if __name__ == "__main__":
             t = {
                 'observation': step['observation']['rgb'],
                 'action': step['action'],
-                'effector_target_translation': step['effector_target_translation'],
-                'effector_translation': step['effector_translation'],
+                'effector_target_translation': step['observation']['effector_target_translation'],
+                'effector_translation': step['observation']['effector_translation'],
                 'instruction': step['observation']['instruction'],
                 'is_first': step['is_first'],
                 'is_last': step['is_last'],
