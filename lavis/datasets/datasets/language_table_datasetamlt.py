@@ -64,10 +64,12 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         total = len(self.files)
         self.files = self.files[:int(total * 0.9)]
                 
-        self.base_model_name = "facebook/opt-1.3b"
+        self.base_model_name = "facebook/opt-350m"
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
         for i in range(100):
             self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
+            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
+            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
         self.tokenizer.add_tokens(['[ENDOFACTION]'])
         self.tokenizer.add_tokens(['[TERMINAL]'])
@@ -84,6 +86,8 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         obs_batch = []
         instrs_batch = []
         actions_batch = []
+        effector_target_translation = []
+        effector_translation = []
         m_obs = 9
 
         # Function to pad a tensor to a target size
@@ -105,6 +109,8 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             instr = ''.join(chr(id) for id in instr if id != 0)
             instrs_batch.append(instr)
             actions = sample['action']
+            effector_target_translation.append(sample['effector_target_translation'])
+            effector_translation.append(sample['effector_translation'])
             # print('actions: ', actions)
             
             actions_batch.append(actions)
@@ -113,6 +119,15 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         for batch in actions_batch:
             while len(batch) < m_obs:
                 batch.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+        
+        for batch in effector_target_translation:
+            while len(batch) < m_obs:
+                batch.append(batch[-1])
+        
+        for batch in effector_translation:
+            while len(batch) < m_obs:
+                batch.append(batch[-1])
+
         
         obs_batch = torch.cat(obs_batch, dim=0)
         obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
@@ -131,6 +146,18 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
             tmp = tmp.input_ids
             a_batch.append(tmp)
+
+        eet_batch = []
+        for action_batch in effector_target_translation:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = tmp.input_ids
+            eet_batch.append(tmp)
+        
+        et_batch = []
+        for action_batch in effector_translation:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = tmp.input_ids
+            et_batch.append(tmp)
         # print('a batch: ')
         # print(a_batch)
         a_batch = torch.stack(a_batch, dim=0) 
@@ -141,6 +168,10 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
                 self.transforms(frame) for frame in video_sequence
             ]) for video_sequence in obs_batch
         ])
+
+        eet_batch = torch.stack(eet_batch, dim=0) 
+        et_batch = torch.stack(et_batch, dim=0)
+
         # print(a_batch.shape) 
         # print(obs_batch.shape)
         # print(instrs_batch)
@@ -148,7 +179,9 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         return {
             'video':  obs_batch, 
             'instructions': instrs_batch, 
-            'actions': a_batch
+            'actions': a_batch,
+            'effector_target_translation': eet_batch,
+            'effector_translation': et_batch
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
@@ -163,7 +196,8 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         """
         # Check if the number is within the range
         if number < range_min or number > range_max:
-            raise ValueError("Number is out of the specified range.")
+           # clip into the range
+            number = min(max(number, range_min), range_max)
 
         # Calculate the width of each bin
         bin_width = (range_max - range_min) / num_bins
@@ -185,6 +219,8 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         obs = []
         instrs = []
         actions = []
+        effector_translations = []
+        effector_target_translation = [] 
         
         for step in trajectory:
             
@@ -192,9 +228,17 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
+            effector_translations.append(f"[ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
+
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
+            effector_target_translation.append(f"[ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
+
             if not step['is_terminal']:
-                first_dim = self.get_bin_id(step['action'][0], -0.03, 0.03, 100)
-                second_dim = self.get_bin_id(step['action'][1], -0.03, 0.03, 100)
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
                 actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')
@@ -205,6 +249,8 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             "observations": obs,
             "instructions": instrs, 
             "action": actions,
+            "effector_translation": effector_translations,
+            "effector_target_translation": effector_target_translation
         }
 
 
@@ -222,10 +268,12 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         total = len(self.files)
         self.files = self.files[int(total * 0.9):]
                 
-        self.base_model_name = "facebook/opt-1.3b"
+        self.base_model_name = "facebook/opt-350m"
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(100):
+        for i in range(101):
             self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
+            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
+            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
         self.tokenizer.add_tokens(['[ENDOFACTION]'])
         self.tokenizer.add_tokens(['[TERMINAL]'])
@@ -242,6 +290,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         obs_batch = []
         instrs_batch = []
         actions_batch = []
+        effector_target_translation = []
+        effector_translation = []
         m_obs = 9
 
         # Function to pad a tensor to a target size
@@ -263,6 +313,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
             instr = ''.join(chr(id) for id in instr if id != 0)
             instrs_batch.append(instr)
             actions = sample['action']
+            effector_target_translation.append(sample['effector_target_translation'])
+            effector_translation.append(sample['effector_translation'])
             # print('actions: ', actions)
             
             actions_batch.append(actions)
@@ -271,6 +323,15 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         for batch in actions_batch:
             while len(batch) < m_obs:
                 batch.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+        
+        for batch in effector_target_translation:
+            while len(batch) < m_obs:
+                batch.append(batch[-1])
+        
+        for batch in effector_translation:
+            while len(batch) < m_obs:
+                batch.append(batch[-1])
+
         
         obs_batch = torch.cat(obs_batch, dim=0)
         obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
@@ -289,6 +350,18 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
             tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
             tmp = tmp.input_ids
             a_batch.append(tmp)
+
+        eet_batch = []
+        for action_batch in effector_target_translation:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = tmp.input_ids
+            eet_batch.append(tmp)
+        
+        et_batch = []
+        for action_batch in effector_translation:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = tmp.input_ids
+            et_batch.append(tmp)
         # print('a batch: ')
         # print(a_batch)
         a_batch = torch.stack(a_batch, dim=0) 
@@ -299,6 +372,10 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
                 self.transforms(frame) for frame in video_sequence
             ]) for video_sequence in obs_batch
         ])
+
+        eet_batch = torch.stack(eet_batch, dim=0) 
+        et_batch = torch.stack(et_batch, dim=0)
+
         # print(a_batch.shape) 
         # print(obs_batch.shape)
         # print(instrs_batch)
@@ -306,7 +383,9 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         return {
             'video':  obs_batch, 
             'instructions': instrs_batch, 
-            'actions': a_batch
+            'actions': a_batch,
+            'effector_target_translation': eet_batch,
+            'effector_translation': et_batch
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
@@ -321,7 +400,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         """
         # Check if the number is within the range
         if number < range_min or number > range_max:
-            raise ValueError("Number is out of the specified range.")
+           # clip into the range
+            number = min(max(number, range_min), range_max)
 
         # Calculate the width of each bin
         bin_width = (range_max - range_min) / num_bins
@@ -343,6 +423,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         obs = []
         instrs = []
         actions = []
+        effector_translations = []
+        effector_target_translation = [] 
         
         for step in trajectory:
             
@@ -350,9 +432,17 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
+            effector_translations.append(f"[ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}]")
+
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
+            effector_target_translation.append(f"[ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}]")
+
             if not step['is_terminal']:
-                first_dim = self.get_bin_id(step['action'][0], -0.03, 0.03, 100)
-                second_dim = self.get_bin_id(step['action'][1], -0.03, 0.03, 100)
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
                 actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')
@@ -363,6 +453,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
             "observations": obs,
             "instructions": instrs, 
             "action": actions,
+            "effector_translation": effector_translations,
+            "effector_target_translation": effector_target_translation
         }
 
 

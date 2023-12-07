@@ -71,7 +71,7 @@ class RobotTransformer(Blip2Base):
         """
         super().__init__()
         
-        self.base_model_name = "facebook/opt-1.3b"
+        self.base_model_name = "facebook/opt-350m"
 
         self.tokenizer = self.init_tokenizer()
         self.start_token_id = self.tokenizer.bos_token_id
@@ -80,7 +80,7 @@ class RobotTransformer(Blip2Base):
         )
 
         self.model = AutoModelForCausalLM.from_pretrained(self.base_model_name ,
-                                                          torch_dtype=torch.bfloat16)
+                                                           torch_dtype=torch.bfloat16)
         self.model.resize_token_embeddings(len(self.tokenizer))
         # self.model = self.model.half()
         self.num_frames = num_frames
@@ -94,17 +94,19 @@ class RobotTransformer(Blip2Base):
         )
 
 
-        self.model = get_peft_model(self.model, peft_config)
-        self.model.print_trainable_parameters()
+        # self.model = get_peft_model(self.model, peft_config)
+        # self.model.print_trainable_parameters()
 
-        self.model_size = 2048
+        self.model_size = 512
         self.linear_projection = nn.Linear(768, self.model_size).to(torch.bfloat16)
      
    
     def init_tokenizer(self):
         tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(100):
+        for i in range(101):
             tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
+            tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
+            tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
         tokenizer.add_tokens(['[ENDOFACTION]'])
         tokenizer.add_tokens(['[TERMINAL]'])
@@ -117,6 +119,8 @@ class RobotTransformer(Blip2Base):
         instructions = samples["instructions"].to(image.device)
 
         actions_gt = samples["actions"].to(image.device)
+        effector_translation = samples["effector_translation"].to(image.device)
+        effector_target_translation = samples["effector_target_translation"].to(image.device)
         print(actions_gt)
         # exit('action gt')
         
@@ -197,6 +201,8 @@ class RobotTransformer(Blip2Base):
         instructions = samples["instructions"].to(image.device)
 
         actions = samples["actions"].to(image.device)
+        effector_translation = samples["effector_translation"].to(image.device)
+        effector_target_translation = samples["effector_target_translation"].to(image.device)
 
         max_length = image.shape[1]
         # print('start training')
@@ -236,13 +242,27 @@ class RobotTransformer(Blip2Base):
         for idx in range(max_length):  
             action_input_ids = actions[:, idx, :].clone()         
             action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
+
+            effector_translation_input_ids = effector_translation[:, idx, :].clone()
+            effector_translation_embeddings = self.model.model.get_input_embeddings()(effector_translation_input_ids)
+
+            effector_target_translation_input_ids = effector_target_translation[:, idx, :].clone()
+            effector_target_translation_embeddings = self.model.model.get_input_embeddings()(effector_target_translation_input_ids)
+
             image_embeddings = frames_embeddings[idx]
-            total_embeddings = torch.cat((total_embeddings, image_embeddings, action_embeddings), dim = 1 )
             
             image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+            effector_target_translation_label = torch.ones((b, effector_target_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+            effector_translation_label = torch.ones((b, effector_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+
+            total_embeddings = torch.cat((total_embeddings, image_embeddings, effector_translation_embeddings,
+                                           effector_target_translation_embeddings, action_embeddings), dim = 1 )
+            
             #prepend -100 to labels for image patches
             labels = torch.cat((labels.long(), 
                                 image_label.long(),
+                                effector_translation_label.long(),
+                                effector_target_translation_label.long(),
                                     action_input_ids.clone().long()), dim=1)
             # exit()
             # Generate the next token

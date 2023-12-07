@@ -32,7 +32,7 @@ run:
   task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 1.00e-4
+  init_lr: 5.00e-5
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 201
@@ -47,7 +47,7 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/Minecraft/4nodes"
+  output_dir: "/mnt/output/Minecraft/4nodes20k"
 
   # logging
   log: wandb

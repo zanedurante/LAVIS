@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # load raw dataset --> replace this with tfds.load() on your
     # local machine!
     b = tfds.builder_from_directory(dataset_path)
-    ds = b.as_dataset(split='train')
+    ds = b.as_dataset(split='train[:1000]')
     total = len(ds)
     ds = tfds.as_numpy(ds)
 
@@ -164,11 +164,12 @@ if __name__ == "__main__":
     # ds = ds.cache()         # optionally keep full dataset in memory
     # ds = ds.shuffle(100)    # set shuffle buffer size
     # ds = ds.repeat()        # ensure that data never runs out
-    base_path = '/mnt/languagetablesimfull'
+    base_path = os.path.expanduser('~/dataset/language_table1kfull/')
     
     os.makedirs(base_path, exist_ok=True)
     l_m = 0
     l_dist = []
+    eet = []
     x_max = float('-inf')
     x_min = float('inf')
 
@@ -206,11 +207,13 @@ if __name__ == "__main__":
             }
             instruction = step['observation']['instruction']
             instruction = ''.join(chr(id) for id in instruction if id != 0)
-            x_max = max(x_max, step['action'][0])
-            x_min = min(x_min, step['action'][0])
+            x_max = max(x_max, step['observation']['effector_translation'][0])
+            x_min = min(x_min, step['observation']['effector_translation'][0])
 
-            y_max = max(y_max, step['action'][1])
-            y_min = min(y_min, step['action'][1])
+            y_max = max(y_max, step['observation']['effector_translation'][1])
+            y_min = min(y_min, step['observation']['effector_translation'][1])
+
+            eet.append(step['observation']['effector_translation'][0])
         #     print(instruction, 'is last: ', step['is_last'], 'is_first: ', step['is_first'], 'is_terminal: ', step['is_terminal'])
         # print('====')
         # obs.append(step['observation']['rgb'])
@@ -226,8 +229,8 @@ if __name__ == "__main__":
         if len(trajectory) > 0:
             np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
     # print(l_m)
-    # plt.hist(l_dist, bins=100)
-    # plt.show()
+    plt.hist(eet, bins=100)
+    plt.show()
 print(x_max)
 print(x_min)
 

@@ -52,8 +52,8 @@ run:
 
   # logging
 
-  amp: True
-  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Minecraft/20231121090/checkpoint_80.pth"
+  amp: False
+  resume_ckpt_path: "/home/nikepupu/checkpoint_8.pth"
 
   evaluate: False 
   train_splits: ["train"]

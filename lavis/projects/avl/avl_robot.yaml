@@ -20,13 +20,13 @@ run:
   task: language_table # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 1.00e-4
+  init_lr: 5.00e-5
   min_lr: 3.0e-6
   weight_decay: 0.05
-  max_epoch: 201
-  batch_size_train: 10
-  batch_size_eval: 12
-  num_workers: 10
+  max_epoch: 101
+  batch_size_train: 4
+  batch_size_eval: 4
+  num_workers: 4
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation

@@ -401,7 +401,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=6.0/7.0,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.5,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -793,10 +793,10 @@ class SpaceTimeTransformer(nn.Module):
         # x = x + self.pos_embed[:, 1:, :]
         # x, mask, restore_mask = self.pos_drop(x)
         # print('before: ', x.shape)
-        if self.training:
-            x, mask, ids_restore = self.random_masking(x, self.patch_drop_rate)
-        else:
-            x, mask, ids_restore = self.random_masking(x, 0.0)
+        # if self.training:
+        x, mask, ids_restore = self.random_masking(x, self.patch_drop_rate)
+        # else:
+        #     x, mask, ids_restore = self.random_masking(x, 0.0)
         # print('after: ', x.shape)
         # cls_token = self.cls_token + self.pos_embed[:, :1, :]
         # cls_tokens = cls_token.expand(x.shape[0], -1, -1)
@@ -810,10 +810,10 @@ class SpaceTimeTransformer(nn.Module):
 
 
         # x = self.norm_pre(x)
-        if self.training:
-            n = self.patches_per_frame_after_dropout # account for patch dropout
-        else:
-            n = self.patches_per_frame # use all patches at inference
+        # if self.training:
+        n = self.patches_per_frame_after_dropout # account for patch dropout
+        # else:
+        #     n = self.patches_per_frame # use all patches at inference
 
         f = num_frames
         # import pdb; pdb.set_trace()
