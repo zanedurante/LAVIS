@@ -20,13 +20,13 @@ run:
   task: language_table # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 5.00e-5
+  init_lr: 1.00e-4
   min_lr: 3.0e-6
   weight_decay: 0.05
   max_epoch: 101
-  batch_size_train: 4
-  batch_size_eval: 4
-  num_workers: 4
+  batch_size_train: 8
+  batch_size_eval: 8
+  num_workers: 8
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
@@ -41,7 +41,7 @@ run:
   log: wandb
 
   amp: False
-  resume_ckpt_path: null #"/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130143/checkpoint_40.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231212164/checkpoint_50.pth"
 
   evaluate: False 
   train_splits: ["train"]

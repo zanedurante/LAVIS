@@ -375,11 +375,11 @@ class RunnerBase:
                 for split_name in self.valid_splits:
                     logging.info("Evaluating on {}.".format(split_name))
 
-                    val_log = self.eval_epoch(
-                        split_name=split_name, cur_epoch=cur_epoch
-                    )
+                    # val_log = self.eval_epoch(
+                    #     split_name=split_name, cur_epoch=cur_epoch
+                    # )
                     # import pdb; pdb.set_trace()
-                    if val_log is not None:
+                    # if val_log is not None:
                     #     if is_main_process():
                     #         assert (
                     #             "agg_metrics" in val_log
@@ -393,9 +393,9 @@ class RunnerBase:
 
                     #         val_log.update({"best_epoch": best_epoch})
     
-                            self.log_stats({'agg_metrics', val_log}, split_name)
-                    # if cur_epoch % 2 == 0 and cur_epoch > 0:
-                    self._save_checkpoint(cur_epoch, is_best=False)
+                            # self.log_stats({'agg_metrics', val_log}, split_name)
+                    if cur_epoch % 10 == 0 and cur_epoch > 0:
+                        self._save_checkpoint(cur_epoch, is_best=False)
 
             else:
                 # if no validation split is provided, we just save the checkpoint at the end of each epoch.

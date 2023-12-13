@@ -5,7 +5,6 @@
 
 model:
   arch: robot_transformer
-
   model_type: flant5xl
   load_finetuned: False
   vit_model: "clip_b"
@@ -13,20 +12,20 @@ model:
   num_frames: 9
 
 datasets:
-  language_tableamlt: # name of the dataset builder
+  language_table: # name of the dataset builder
     data_type: videos
 
 run:
   task: language_table # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 5.00e-5
-  min_lr: 3.0e-6
+  init_lr: 1.00e-4
+  min_lr: 3.0e-5
   weight_decay: 0.05
-  max_epoch: 51
-  batch_size_train: 4
-  batch_size_eval: 4
-  num_workers: 4
+  max_epoch: 81
+  batch_size_train: 1
+  batch_size_eval: 1
+  num_workers: 1
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
@@ -35,13 +34,13 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/output/Trio/Language_Table"
+  output_dir: "output/Trio/Language_Table"
 
   # logging
   log: wandb
 
   amp: True
-  resume_ckpt_path: null #"/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130143/checkpoint_40.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231213112/checkpoint_80.pth"
 
   evaluate: False 
   train_splits: ["train"]
@@ -49,6 +48,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 32
+  world_size: 1
   dist_url: "env://"
   distributed: True

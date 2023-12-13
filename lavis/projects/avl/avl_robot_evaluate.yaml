@@ -41,7 +41,7 @@ run:
   # log: wandb
 
   amp: False
-  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130232/checkpoint_70.pth"
+  resume_ckpt_path: "/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231213012/checkpoint_60.pth"
 
   evaluate: True 
   train_splits: ["train"]

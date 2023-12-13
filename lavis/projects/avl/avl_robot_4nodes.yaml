@@ -5,7 +5,6 @@
 
 model:
   arch: robot_transformer
-
   model_type: flant5xl
   load_finetuned: False
   vit_model: "clip_b"
@@ -20,10 +19,10 @@ run:
   task: language_table # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
-  init_lr: 5.00e-5
-  min_lr: 3.0e-6
+  init_lr: 1.00e-4
+  min_lr: 5.0e-6
   weight_decay: 0.05
-  max_epoch: 51
+  max_epoch: 101
   batch_size_train: 4
   batch_size_eval: 4
   num_workers: 4
@@ -49,6 +48,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 32
+  world_size: 64
   dist_url: "env://"
   distributed: True

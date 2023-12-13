@@ -401,7 +401,7 @@ class SpaceTimeTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.5,
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.25,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
         """
@@ -796,7 +796,7 @@ class SpaceTimeTransformer(nn.Module):
         # if self.training:
         x, mask, ids_restore = self.random_masking(x, self.patch_drop_rate)
         # else:
-        #     x, mask, ids_restore = self.random_masking(x, 0.0)
+            # x, mask, ids_restore = self.random_masking(x, 0.0)
         # print('after: ', x.shape)
         # cls_token = self.cls_token + self.pos_embed[:, :1, :]
         # cls_tokens = cls_token.expand(x.shape[0], -1, -1)
@@ -826,12 +826,36 @@ class SpaceTimeTransformer(nn.Module):
         #x = self.pre_logits(x)
 
         return x, mask, ids_restore
+    
+    def forward_wihtout_mask(self, x):
+        b, num_frames, channels, _, _ = x.shape # b 101
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(2, 1)
+        x = x.reshape(b, -1, self.patch_embed.embed_dim)
 
-    def forward(self, x):
+        BF = x.shape[0]
+        cls_tokens = self.cls_token.expand(BF, -1, -1)
+
+        x = x + self.pos_embed[:, 1:, :]
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        n = self.patches_per_frame
+        f = num_frames
+
+        for blk in self.blocks:
+            x = blk(x, self.einops_from_space, self.einops_to_space, self.einops_from_time,
+                    self.einops_to_time,
+                    time_n=n, space_f=f)
+        return x, None, None
+
+    def forward(self, x, use_mask=True):
         # convert image to video format before sending in
         if len(x.shape) == 4:
             x = x.unsqueeze(1) # convert b, c, h, w --> b, 1, c, h, w (t=1 here)
-        x, mask, restore_mask = self.forward_features(x)
+        if use_mask:
+            x, mask, restore_mask = self.forward_features(x)
+        else:
+            x, mask, restore_mask = self.forward_wihtout_mask(x)
         return x, mask, restore_mask
 
 
@@ -851,7 +875,7 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
 
     vit_checkpoint = vit_model.state_dict()
     ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
-    model = model.to(torch.bfloat16)
+    # model = model.to(torch.bfloat16)
 
     # nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
     # for block in model.blocks:

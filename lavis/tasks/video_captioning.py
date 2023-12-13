@@ -69,6 +69,7 @@ class VideoCaptionTask(BaseTask):
             print('start valid step')
             # eval_output = self.valid_step(model=model, samples=samples)
             eval_output = model.generate(samples)
+            continue
             
             plt.rcParams['figure.figsize'] = [24, 24]
             for index in range(4):
@@ -113,11 +114,11 @@ class VideoCaptionTask(BaseTask):
                 # import pdb; pdb.set_trace()
                 show_image(im_masked[0][0], "masked")
 
-                plt.subplot(4, 3, 3+index*3)
-                show_image(y[0].float(), "reconstruction")
+                # plt.subplot(4, 3, 3+index*3)
+                # show_image(y[0].float(), "reconstruction")
 
-                # plt.subplot(9, 4, 4+index*4)
-                # show_image(im_paste[0][0], "reconstruction + visible")
+                plt.subplot(4, 3, 3+index*3)
+                show_image(im_paste[0][0], "reconstruction + visible")
 
             plt.show()
            

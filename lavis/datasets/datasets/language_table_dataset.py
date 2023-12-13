@@ -66,18 +66,25 @@ class LanguageTableDatasetTrain(BaseDataset):
         
         self.files = sorted(self.files)
                 
-        self.base_model_name = "facebook/opt-350m"
+        self.base_model_name = "facebook/opt-125m"
         total = len(self.files)
         self.files = self.files
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(101):
+        for i in range(21):
             self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
             self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
             self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
         
         self.tokenizer.add_tokens(['[ENDOFACTION]'])
+        self.tokenizer.add_tokens(['[STARTACTION]'])
         self.tokenizer.add_tokens(['[TERMINAL]'])
+        
+        self.tokenizer.add_tokens(['[STARTEET]'])
+        self.tokenizer.add_tokens(['[ENDOFEET]'])
+
+        self.tokenizer.add_tokens(['[STARTEETT]'])
+        self.tokenizer.add_tokens(['[ENDOFEETT]'])
 
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -124,7 +131,7 @@ class LanguageTableDatasetTrain(BaseDataset):
         
         for batch in actions_batch:
             while len(batch) < m_obs:
-                batch.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+                batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
         
         for batch in effector_target_translation:
             while len(batch) < m_obs:
@@ -133,13 +140,17 @@ class LanguageTableDatasetTrain(BaseDataset):
         for batch in effector_translation:
             while len(batch) < m_obs:
                 batch.append(batch[-1])
+        
+        # print(actions_batch)
+        # print(effector_target_translation)
+        # print(effector_translation)
 
         
         obs_batch = torch.cat(obs_batch, dim=0)
         obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
         
         instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
-                                      truncation=True, max_length=200, add_special_tokens = True)
+                                      truncation=True, max_length=200, add_special_tokens = False)
         instrs_batch = instrs_batch.input_ids
         max_len = max([len(action) for action in actions_batch])
         for action_lst in actions_batch:
@@ -149,19 +160,19 @@ class LanguageTableDatasetTrain(BaseDataset):
 
         a_batch = []
         for action_batch in actions_batch:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200,  add_special_tokens = False)
             tmp = tmp.input_ids
             a_batch.append(tmp)
 
         eet_batch = []
         for action_batch in effector_target_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200,  add_special_tokens = False)
             tmp = tmp.input_ids
             eet_batch.append(tmp)
         
         et_batch = []
         for action_batch in effector_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200,  add_special_tokens = False)
             tmp = tmp.input_ids
             et_batch.append(tmp)
         # print('a batch: ')
@@ -177,9 +188,10 @@ class LanguageTableDatasetTrain(BaseDataset):
 
         eet_batch = torch.stack(eet_batch, dim=0) 
         et_batch = torch.stack(et_batch, dim=0)
+        # print('eet_batch batch:', eet_batch)
         # print(a_batch.shape) 
-        # print(obs_batch.shape)
-        # print(instrs_batch)
+        # print(eet_batch.shape)
+        # print(et_batch.shape)
         # exit()
         return {
             'video':  obs_batch, 
@@ -233,20 +245,20 @@ class LanguageTableDatasetTrain(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
-            effector_translations.append(f"[ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}]")
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 20))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 20))
+            effector_translations.append(f"[STARTEET][ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
 
-            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
-            effector_target_translation.append(f"[ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}]")
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 20))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 20))
+            effector_target_translation.append(f"[STARTEETT][ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
 
             if not step['is_terminal']:
-                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
-                actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 20))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 20))
+                actions.append(f"[STARTACTION][ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
-                actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+                actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
 
         # return obs, instrs, actions, is_firsts, is_lasts, is_terminals
     
@@ -276,15 +288,23 @@ class LanguageTableDatasetEval(BaseDataset):
         total = len(self.files)
         self.files = self.files[int(total * 0.9):]
 
-        self.base_model_name = "facebook/opt-350m"
+        self.base_model_name = "facebook/opt-125m"
         self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(101):
+        
+        for i in range(21):
             self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
             self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
             self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
         self.tokenizer.add_tokens(['[ENDOFACTION]'])
+        self.tokenizer.add_tokens(['[STARTACTION]'])
         self.tokenizer.add_tokens(['[TERMINAL]'])
+        
+        self.tokenizer.add_tokens(['[STARTEET]'])
+        self.tokenizer.add_tokens(['[ENDOFEET]'])
+
+        self.tokenizer.add_tokens(['[STARTEETT]'])
+        self.tokenizer.add_tokens(['[ENDOFEETT]'])
 
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -331,7 +351,7 @@ class LanguageTableDatasetEval(BaseDataset):
         
         for batch in actions_batch:
             while len(batch) < m_obs:
-                batch.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+                batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
         
         for batch in effector_target_translation:
             while len(batch) < m_obs:
@@ -351,8 +371,6 @@ class LanguageTableDatasetEval(BaseDataset):
         max_len = max([len(action) for action in actions_batch])
         for action_lst in actions_batch:
             action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
-
-
 
         a_batch = []
         for action_batch in actions_batch:
@@ -445,20 +463,20 @@ class LanguageTableDatasetEval(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim = int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
+            ee_t_first_dim = int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 20))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 20))
             effector_translations.append(f"[ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}]")
 
-            ee_tt_first_dim = int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
+            ee_tt_first_dim = int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 20))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 20))
             effector_target_translation.append(f"[ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}]")
 
             if not step['is_terminal']:
-                first_dim = int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
+                first_dim = int(self.get_bin_id(step['action'][0], -0.03, 0.03, 20))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 20))
                 actions.append(f"[ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
-                actions.append('[TERMINAL][TERMINAL][ENDOFACTION]')
+                actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
 
         # return obs, instrs, actions, is_firsts, is_lasts, is_terminals
     
