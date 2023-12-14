@@ -394,7 +394,7 @@ class RunnerBase:
                     #         val_log.update({"best_epoch": best_epoch})
     
                             # self.log_stats({'agg_metrics', val_log}, split_name)
-                    if cur_epoch % 10 == 0 and cur_epoch > 0:
+                    if cur_epoch % 2 == 0 and cur_epoch > 0:
                         self._save_checkpoint(cur_epoch, is_best=False)
 
             else:

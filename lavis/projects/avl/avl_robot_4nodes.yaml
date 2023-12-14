@@ -22,7 +22,7 @@ run:
   init_lr: 1.00e-4
   min_lr: 5.0e-6
   weight_decay: 0.05
-  max_epoch: 101
+  max_epoch: 81
   batch_size_train: 4
   batch_size_eval: 4
   num_workers: 4

@@ -102,7 +102,7 @@ class TrioT5(Blip2Base):
         # configuration = TransfoXLConfig()
         # configuration.d_embed = 1024
         # configuration.output_hidden_states=True
-        self.model = OPTForCausalLM.from_pretrained("facebook/opt-125m", torch_dtype=torch.bfloat16) #TransfoXLLMHeadModel(configuration)
+        self.model = OPTForCausalLM.from_pretrained("facebook/opt-125m") #TransfoXLLMHeadModel(configuration)
         self.model.resize_token_embeddings(len(self.tokenizer))
    
     def init_tokenizer(self, truncation_side="right"):
@@ -170,7 +170,7 @@ class TrioT5(Blip2Base):
         preds = []
         masks = []
         print('num_frames: ', num_frames)
-        with autocast(dtype=torch.bfloat16):
+        with autocast(dtype=torch.float16):
             frames_embeddings = []
             for i in range(num_frames):
                 features, mask, ids_restore =   self.visual_encoder(image[:, i, :, :, :].unsqueeze(1)) # (N, 1, C, H, W)
@@ -251,7 +251,7 @@ class TrioT5(Blip2Base):
         else:
             raise ValueError("No image or video input found in input dict.")
         
-        image = image.to(torch.bfloat16)
+        # image = image.to(torch.float32)
         
         text_output = samples["text_output"]
         
@@ -266,68 +266,62 @@ class TrioT5(Blip2Base):
         frames_embeddings = []
         b, t, c, h, w = image.shape
         video_batch = image.reshape(b * t, c, h, w)
+        with autocast(dtype=torch.float16):
+            features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
+            image_embeds = self.ln_vision(features)
+            pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+            mae_loss = mae_loss +  self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
 
-        features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
-        image_embeds = self.ln_vision(features)
-        pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-        mae_loss = mae_loss +  self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+            image_embeds = image_embeds.reshape( b, self.num_frames, image_embeds.shape[-2], image_embeds.shape[-1])
 
-        image_embeds = image_embeds.reshape( b, self.num_frames, image_embeds.shape[-2], image_embeds.shape[-1])
-
-        for i in range(num_frames):
-            frames_embeddings.append(image_embeds[:, i, :, :])
-        
-
-        total_embeddings = torch.empty((b, 0, 768), dtype=torch.bfloat16).to(image.device)
-        
-        total_loss = 0.0
-        labels = torch.empty((b, 0), dtype=torch.long).to(image.device)
-        for idx in range(max_length):  
+            for i in range(num_frames):
+                frames_embeddings.append(image_embeds[:, i, :, :])
             
-            text_output_idx = [ text[idx] for text in text_output_final ]
+
+            total_embeddings = torch.empty((b, 0, 768)).to(image.device)
             
-            # print('text_output_idx: ', text_output_idx)
-            target_tokens = self.tokenizer(
-                text_output_idx,
-                padding='longest',
-                truncation=True,
-                max_length=self.num_frames * 10,
-                add_special_tokens = True,
-                # skip_special_tokens=False,
-                return_tensors="pt"
-            ).to(image.device)
+            total_loss = 0.0
+            labels = torch.empty((b, 0), dtype=torch.long).to(image.device)
+            for idx in range(max_length):  
+                
+                text_output_idx = [ text[idx] for text in text_output_final ]
+                
+                # print('text_output_idx: ', text_output_idx)
+                target_tokens = self.tokenizer(
+                    text_output_idx,
+                    padding='longest',
+                    truncation=True,
+                    max_length=self.num_frames * 10,
+                    add_special_tokens = True,
+                    # skip_special_tokens=False,
+                    return_tensors="pt"
+                ).to(image.device)
 
-            input_ids = target_tokens.input_ids
-        
-            text_embeddings = self.model.model.get_input_embeddings()(input_ids)
-            # image_embeddings = self.xl_proj(frames_embeddings[idx])
-            image_embeddings = frames_embeddings[idx]
-            # print(image_embeddings.shape)
-            # print(text_embeddings.shape)
-            # print(total_embeddings.shape)
-            # print('=======================')
-            # exit()
+                input_ids = target_tokens.input_ids
             
-            total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
-            text_labels = input_ids.clone()
+                text_embeddings = self.model.model.get_input_embeddings()(input_ids)
+                image_embeddings = frames_embeddings[idx]
+                
+                
+                total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
+                text_labels = input_ids.clone()
 
-            #prepend -100 to labels for image patches
-            labels = torch.cat((labels, torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, text_labels), dim=1)
+                #prepend -100 to labels for image patches
+                labels = torch.cat((labels, torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, text_labels), dim=1)
 
-            # Generate the next token
-            # TODO: replace image with image special token in label
-               
-            output = self.model(
-                inputs_embeds = total_embeddings,
-                labels = labels,
-            )
-            loss = output.loss
-            total_loss += loss
+
+                
+                output = self.model(
+                    inputs_embeds = total_embeddings,
+                    labels = labels,
+                )
+                loss = output.loss
+                total_loss += loss
+            
+
         
-
-       
-        total_loss = total_loss + mae_loss
-        return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask}
+            total_loss = total_loss + mae_loss
+            return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask}
 
 
     @classmethod
