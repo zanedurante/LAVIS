@@ -11,6 +11,7 @@ import pandas as pd
 import cv2
 from collections import Counter
 from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionDataset
+from lavis.models.model_utils import init_tokenizer
 from torch.utils.data.dataloader import default_collate
 def init_transform_dict(input_res=224,
                         center_crop=256,
@@ -200,7 +201,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         # load all npz files under the directory
         # self.episodes = []
         print('loading metadata for robot')
-        with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         print('loading metadata for robot done')
         self.files = sorted(self.files)
@@ -208,28 +209,29 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.files = self.files
                 
         self.base_model_name = "facebook/opt-125m"
-        self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(21):
-            self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
+        # self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
+        # for i in range(21):
+        #     self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
+        #     self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
+        #     self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
         
-        self.tokenizer.add_tokens(['[ENDOFACTION]'])
-        self.tokenizer.add_tokens(['[STARTACTION]'])
-        self.tokenizer.add_tokens(['[TERMINAL]'])
+        # self.tokenizer.add_tokens(['[ENDOFACTION]'])
+        # self.tokenizer.add_tokens(['[STARTACTION]'])
+        # self.tokenizer.add_tokens(['[TERMINAL]'])
         
-        self.tokenizer.add_tokens(['[STARTEET]'])
-        self.tokenizer.add_tokens(['[ENDOFEET]'])
+        # self.tokenizer.add_tokens(['[STARTEET]'])
+        # self.tokenizer.add_tokens(['[ENDOFEET]'])
 
-        self.tokenizer.add_tokens(['[STARTEETT]'])
-        self.tokenizer.add_tokens(['[ENDOFEETT]'])
+        # self.tokenizer.add_tokens(['[STARTEETT]'])
+        # self.tokenizer.add_tokens(['[ENDOFEETT]'])
 
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        # self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer = init_tokenizer(self.base_model_name)
 
         self.transforms = self.get_transforms()
         # ================== load metadata ==================
         print('loading metadata for minecraft')
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         print('loading metadata for minecraft done')
         self.total_num_frames = total_num_frames
