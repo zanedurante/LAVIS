@@ -47,7 +47,7 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "output/Trio/Pretraining"
+  output_dir: "/mnt/output/Trio/Pretraining"
 
   # logging
   log: wandb
