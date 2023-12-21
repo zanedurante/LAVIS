@@ -69,19 +69,28 @@ class VideoCaptionTask(BaseTask):
             print('start valid step')
             # eval_output = self.valid_step(model=model, samples=samples)
             eval_output = model.generate(samples)
-            continue
+    
             
             plt.rcParams['figure.figsize'] = [24, 24]
             for index in range(4):
-                pred  = eval_output["preds"][index]
-                image = eval_output["image"][:, index, :, :, :]
-                mask = eval_output["masks"][index]
-                # actions = eval_output["actions"][index]
-               
-                mask = mask.unsqueeze(-1).repeat(1, 1, model.visual_encoder.patch_embed.patch_size[0]**2 *3)  # (N, H*W, p*p*3)
+                if 'preds' in eval_output and eval_output["preds"] is not None and len(eval_output["preds"]) > 0:
+                    pred  = eval_output["preds"][index]
+                else:
+                    pred = None
 
-                mask = model.visual_encoder.unpatchify(mask)  # 1 is removing, 0 is keeping
-                mask = torch.einsum('nfchw->nfhwc', mask).detach().cpu()
+                # pred  = eval_output["preds"][index]
+                image = eval_output["image"][:, index, :, :, :]
+                if 'masks' in eval_output and eval_output["masks"] is not None and len(eval_output["masks"]) > 0:
+                    mask = eval_output["masks"][index]
+                else:
+                    mask = None
+                # mask = eval_output["masks"][index]
+                # actions = eval_output["actions"][index]
+                if mask:
+                    mask = mask.unsqueeze(-1).repeat(1, 1, model.visual_encoder.patch_embed.patch_size[0]**2 *3)  # (N, H*W, p*p*3)
+
+                    mask = model.visual_encoder.unpatchify(mask)  # 1 is removing, 0 is keeping
+                    mask = torch.einsum('nfchw->nfhwc', mask).detach().cpu()
                 # mask = mask[0]
 
                 # y = model.visual_encoder.unpatchify(pred)
@@ -92,33 +101,44 @@ class VideoCaptionTask(BaseTask):
                 # show_image(yy[0], "original")
                 # plt.show()
 
-
-                y = model.visual_encoder.unpatchify(pred)
-                y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
-                y = y[0]
-                # show_image(y[0][0], "reconstruction")
-                # plt.show()
-                yy = torch.einsum('nchw->nhwc', image).detach().cpu()
-                x = yy[0]
-                
-                im_masked = x * (1 - mask)
-
-                # MAE reconstruction pasted with visible patches
-                im_paste = x * (1 - mask) + y * mask
-
+                if pred is not None:
+                    y = model.visual_encoder.unpatchify(pred)
+                    y = torch.einsum('nfchw->nfhwc', y).detach().cpu()
+                    y = y[0]
+                    # show_image(y[0][0], "reconstruction")
+                    # plt.show()
+                    yy = torch.einsum('nchw->nhwc', image).detach().cpu()
+                # x = yy[0]
+                x = eval_output['image'][0][index]
+                x = x.permute(1, 2, 0).cpu()
+                # print(x.shape)
+                # exit()
+                # print()
+                # exit()
                 plt.subplot(4, 3, 1+index*3)
                 # show_image(x, actions.split('[endofaction]')[index].replace('</s>', ''))
-                show_image(x, 'original')
+                show_image(x, eval_output['actions'][index])
 
                 plt.subplot(4, 3, 2+index*3)
-                # import pdb; pdb.set_trace()
-                show_image(im_masked[0][0], "masked")
+                show_image(x, 'grond truth: ' +  str(eval_output['action_gt'][index][0]))
 
-                # plt.subplot(4, 3, 3+index*3)
-                # show_image(y[0].float(), "reconstruction")
+                if mask:
+                    im_masked = x * (1 - mask)
 
-                plt.subplot(4, 3, 3+index*3)
-                show_image(im_paste[0][0], "reconstruction + visible")
+                    # MAE reconstruction pasted with visible patches
+                    im_paste = x * (1 - mask) + y * mask
+
+                  
+
+                    plt.subplot(4, 3, 2+index*3)
+                    # import pdb; pdb.set_trace()
+                    show_image(im_masked[0][0], "masked")
+
+                    # plt.subplot(4, 3, 3+index*3)
+                    # show_image(y[0].float(), "reconstruction")
+
+                    plt.subplot(4, 3, 3+index*3)
+                    show_image(im_paste[0][0], "reconstruction + visible")
 
             plt.show()
            

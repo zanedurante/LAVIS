@@ -43,6 +43,55 @@ from lavis.datasets.datasets.language_table_datasetamlt import (
     LanguageTableDatasetAMLTTrain, LanguageTableDatasetAMLTEval
 )
 
+from lavis.datasets.datasets.pretraining_dataset import (
+    PretrainingDatasetAMLT
+)
+
+@registry.register_builder("pretraining_amlt")
+class PretraningBuilder(BaseDatasetBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = PretrainingDatasetAMLT
+        self.eval_dataset_cls = PretrainingDatasetAMLT
+
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/pretraining/amlt.yaml", 
+    }
+
+    def build_datasets(self, cfg=None):
+        print("Assuming pretraining dataset is already stored -- skipping build!!")
+        datasets = {"train": None, "eval": None}
+
+        self.build_processors()
+
+        num_frames = self.config.get("total_num_frames", 9)
+        num_skip_frames = self.config.get("num_skip_frames", 0)
+
+        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+            is_train = split == "train"
+            vis_processor = (
+                self.vis_processors["train"]
+                if is_train
+                else self.vis_processors["eval"]
+            )
+            text_processor = (
+                self.text_processors["train"]
+                if is_train
+                else self.text_processors["eval"]
+            )
+            ann_paths = None # Not used for TrioVideo datasets 
+            vis_root = None # Not used for TrioVideo datasets
+            datasets[split] = dataset_cls(
+                        vis_processor=vis_processor,
+                        text_processor=text_processor,
+                        ann_paths=ann_paths,
+                        vis_root=vis_root,
+                        num_skip_frames=num_skip_frames,
+                        total_num_frames=num_frames,
+            )
+
+        return datasets
+
 @registry.register_builder("language_table")
 class LanguageTableBuilderLocal(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):

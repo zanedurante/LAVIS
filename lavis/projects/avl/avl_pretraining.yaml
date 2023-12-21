@@ -13,20 +13,32 @@ model:
   num_frames: 9
 
 datasets:
-  language_table: # name of the dataset builder
+  pretraining_amlt: # name of the dataset builder
     data_type: videos
+    total_num_frames: 9
+    num_skip_frames: 0
+    vis_processor:
+        train:
+          name: "trio_video_train"
+        eval:
+          name: "trio_video_eval"
+    text_processor:
+        train:
+          name: "blip_caption"
+        eval:
+          name: "blip_caption"
 
 run:
-  task: language_table # TODO: Add associated metrics
+  task: video_captioning # TODO: Add associated metrics
   # optimizer
   lr_sched: "linear_warmup_cosine_lr"
   init_lr: 1.00e-4
-  min_lr: 3.0e-6
+  min_lr: 5.0e-6
   weight_decay: 0.05
-  max_epoch: 101
-  batch_size_train: 8
-  batch_size_eval: 8
-  num_workers: 8
+  max_epoch: 81
+  batch_size_train: 2
+  batch_size_eval: 2
+  num_workers: 0
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
@@ -35,12 +47,12 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "output/Trio/Language_Table"
+  output_dir: "output/Trio/Pretraining"
 
   # logging
   log: wandb
 
-  amp: False
+  amp: True
   resume_ckpt_path: null #"/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130143/checkpoint_40.pth"
 
   evaluate: False 
@@ -49,6 +61,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 1
+  world_size: 32
   dist_url: "env://"
   distributed: True

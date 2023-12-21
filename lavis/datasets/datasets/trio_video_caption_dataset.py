@@ -92,7 +92,7 @@ class TrioVideoCaptionDataset(VideoCaptionDataset):
             # "Using language, provide a short account of the image. ",
             # "Use a few words to illustrate what is happening in the picture. ",
             'A Minecraft video with action sequences of ',
-            'The player play Minecraft with  the following actions: ',
+            'The player play Minecraft with the following actions: ',
             'A video showcasing action sequences in Minecraft: ',
             "The player engages in these actions while playing Minecraft: "
 
