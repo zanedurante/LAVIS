@@ -130,9 +130,17 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
             backend='nccl', rank=global_rank, world_size=world_size
         )
     else:
-        dist.init_process_group(
-            backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
-        )
+        # multi-node setup
+        # setup main node first
+        if global_rank == 0:
+            dist.init_process_group(
+                backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
+            )
+        torch.distributed.barrier() # wait for main node to start
+        if global_rank != 0:
+            dist.init_process_group(
+                backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
+            )
     torch.cuda.set_device(gpu_rank)
     print(f"II: Rank {global_rank} initialized.")
     torch.distributed.barrier()
