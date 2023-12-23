@@ -64,7 +64,8 @@ class RunnerBase:
         self.log = cfg.get_config()["run"].get("log", "stdout") # defaults to stdout
 
         # self.setup_seeds()
-        self.setup_output_dir()
+        if get_rank() == 0:
+            self.setup_output_dir() # all processes share the same output_dir (mounted)
 
     @property
     def device(self):
@@ -336,9 +337,12 @@ class RunnerBase:
 
         output_dir = lib_root / self.config.run_cfg.output_dir / self.job_id
         result_dir = output_dir / "result"
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        result_dir.mkdir(parents=True, exist_ok=True)
+        
+        # replace with more ddp robust version
+        os.makedirs(str(output_dir), exist_ok=True)
+        os.makedirs(str(result_dir), exist_ok=True)
+        #output_dir.mkdir(parents=True, exist_ok=True)
+        #result_dir.mkdir(parents=True, exist_ok=True)
 
         registry.register_path("result_dir", str(result_dir))
         registry.register_path("output_dir", str(output_dir))

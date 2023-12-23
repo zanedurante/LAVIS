@@ -114,6 +114,7 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
         os.environ['MASTER_PORT'] = '12323'
 
     if node_rank > 0:
+        print(f"Changing master addr {os.environ['MASTER_ADDR']} to master ip: {os.environ['MASTER_IP']}")
         os.environ['MASTER_ADDR'] = os.environ['MASTER_IP']
         master_addr = os.environ['MASTER_IP'] # Master IP set separately
     
@@ -130,21 +131,14 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
             backend='nccl', rank=global_rank, world_size=world_size
         )
     else:
-        # multi-node setup
-        # setup main node first
-        if global_rank == 0:
-            dist.init_process_group(
-                backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
-            )
-        torch.distributed.barrier() # wait for main node to start
-        if global_rank != 0:
-            dist.init_process_group(
-                backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
-            )
+        print("Global rank: ", global_rank, " Master URI: ", master_uri, "backend: ", 'nccl')
+        dist.init_process_group(
+            backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
+        )
     torch.cuda.set_device(gpu_rank)
     print(f"II: Rank {global_rank} initialized.")
     torch.distributed.barrier()
-    setup_for_distributed(global_rank == 0)
+    #setup_for_distributed(global_rank == 0)
 
 
 def init_distributed_mode(args):
