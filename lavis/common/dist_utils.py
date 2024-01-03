@@ -90,55 +90,76 @@ def get_dist_args_gcr():
         print(f"II Environment variables not set: {', '.join(missing)}.")
     return args
 
-def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCR
+def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCRargs = get_dist_args_gcr()
+    args = get_dist_args_gcr()
+    
+    master_uri = "tcp://%s:%s" % (args.get("MASTER_ADDR"), args.get("MASTER_PORT"))
+    os.environ["NCCL_DEBUG"] = "WARN"
+    node_rank = args.get("NODE_RANK")
+    
     gpus_per_node = torch.cuda.device_count()
-    dist_args = get_dist_args_gcr()
-    world_size = dist_args.get("WORLD_SIZE", 1)
-    node_rank = dist_args.get("NODE_RANK", 0)
-    local_rank = dist_args.get("LOCAL_RANK", 0)
-    gpu_rank = local_rank % gpus_per_node
-    master_addr = dist_args.get("MASTER_ADDR", "localhost")
-    master_port = dist_args.get("MASTER_PORT", "12323")
-    print("II: Distributed args: ", dist_args)
-    print(f"WORLD_SIZE: {world_size}, GPU_RANK: {gpu_rank}, NODE RANK: {node_rank}\n")
-    # Add support for single gpu dist training with same launcher
-    if node_rank is None:
-        node_rank = 0 
-    if world_size is None:
-        world_size = 1
-    if gpu_rank is None:
-        gpu_rank = 0
-    if master_addr is None:
-        os.environ['MASTER_ADDR'] = 'localhost'
-    if master_port is None:
-        os.environ['MASTER_PORT'] = '12323'
-
-    if node_rank > 0:
-        print(f"Changing master addr {os.environ['MASTER_ADDR']} to master ip: {os.environ['MASTER_IP']}")
-        os.environ['MASTER_ADDR'] = os.environ['MASTER_IP']
-        master_addr = os.environ['MASTER_IP'] # Master IP set separately
-    
+    world_size = args.get("WORLD_SIZE")
+    gpu_rank = args.get("LOCAL_RANK")
     global_rank = node_rank * gpus_per_node + gpu_rank
-    master_uri = "tcp://%s:%s" % (master_addr, master_port)
-    os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
-    os.environ[
-        "TORCH_DISTRIBUTED_DEBUG"
-    ] = "DETAIL"
-    print(f"WORLD_SIZE: {world_size}, GPU_RANK: {gpu_rank}, NODE RANK: {node_rank} MASTER_ADDR: {master_addr} \n")
-    
-    if "None" in master_uri: # Use standard init if not set
-        dist.init_process_group(
-            backend='nccl', rank=global_rank, world_size=world_size
-        )
-    else:
-        print("Global rank: ", global_rank, " Master URI: ", master_uri, "backend: ", 'nccl')
-        dist.init_process_group(
-            backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
-        )
+
+    dist.init_process_group(
+        backend="nccl", init_method=master_uri, world_size=world_size, rank=global_rank
+    )
+
+    print(
+        f"II Running basic DDP example with gpu_rank={gpu_rank}, node_rank={node_rank}, global_rank={global_rank}"
+        f" gpus_per_node={gpus_per_node}, world_size={world_size}"
+    )
+
     torch.cuda.set_device(gpu_rank)
-    print(f"II: Rank {global_rank} initialized.")
-    torch.distributed.barrier()
-    #setup_for_distributed(global_rank == 0)
+    # gpus_per_node = torch.cuda.device_count()
+    # dist_args = get_dist_args_gcr()
+    # world_size = dist_args.get("WORLD_SIZE", 1)
+    # node_rank = dist_args.get("NODE_RANK", 0)
+    # local_rank = dist_args.get("LOCAL_RANK", 0)
+    # gpu_rank = local_rank % gpus_per_node
+    # master_addr = dist_args.get("MASTER_ADDR", "localhost")
+    # master_port = dist_args.get("MASTER_PORT", "12323")
+    # print("II: Distributed args: ", dist_args)
+    # print(f"WORLD_SIZE: {world_size}, GPU_RANK: {gpu_rank}, NODE RANK: {node_rank}\n")
+    # # Add support for single gpu dist training with same launcher
+    # if node_rank is None:
+    #     node_rank = 0 
+    # if world_size is None:
+    #     world_size = 1
+    # if gpu_rank is None:
+    #     gpu_rank = 0
+    # if master_addr is None:
+    #     os.environ['MASTER_ADDR'] = 'localhost'
+    # if master_port is None:
+    #     os.environ['MASTER_PORT'] = '12323'
+
+    # if node_rank > 0:
+    #     print(f"Changing master addr {os.environ['MASTER_ADDR']} to master ip: {os.environ['MASTER_IP']}")
+    #     os.environ['MASTER_ADDR'] = os.environ['MASTER_IP']
+    #     master_addr = os.environ['MASTER_IP'] # Master IP set separately
+    
+    # global_rank = node_rank * gpus_per_node + gpu_rank
+    # master_uri = "tcp://%s:%s" % (master_addr, master_port)
+    # os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
+    # os.environ[
+    #     "TORCH_DISTRIBUTED_DEBUG"
+    # ] = "DETAIL"
+    # print(f"WORLD_SIZE: {world_size}, GPU_RANK: {gpu_rank}, NODE RANK: {node_rank} MASTER_ADDR: {master_addr} \n")
+    
+    # if "None" in master_uri: # Use standard init if not set
+    #     dist.init_process_group(
+    #         backend='nccl', rank=global_rank, world_size=world_size
+    #     )
+    # else:
+    #     print("Global rank: ", global_rank, " Master URI: ", master_uri, "backend: ", 'nccl')
+    #     dist.init_process_group(
+    #         backend='nccl', rank=global_rank, init_method=master_uri, world_size=world_size
+    #     )
+    # torch.cuda.set_device(gpu_rank)
+    # print(f"II: Rank {global_rank} initialized.")
+    # torch.distributed.barrier()
+    # #setup_for_distributed(global_rank == 0)
 
 
 def init_distributed_mode(args):

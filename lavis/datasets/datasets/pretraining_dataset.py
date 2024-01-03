@@ -198,8 +198,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
     """
     def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
         self.basedir = '/mnt/languagetablesim'
-        # load all npz files under the directory
-        # self.episodes = []
+      
         print('loading metadata for robot')
         with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
             self.files = f.read().splitlines() 
@@ -209,23 +208,9 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.files = self.files
                 
         self.base_model_name = "facebook/opt-125m"
-        # self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        # for i in range(21):
-        #     self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
-        #     self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
-        #     self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
-        
-        # self.tokenizer.add_tokens(['[ENDOFACTION]'])
-        # self.tokenizer.add_tokens(['[STARTACTION]'])
-        # self.tokenizer.add_tokens(['[TERMINAL]'])
-        
-        # self.tokenizer.add_tokens(['[STARTEET]'])
-        # self.tokenizer.add_tokens(['[ENDOFEET]'])
 
-        # self.tokenizer.add_tokens(['[STARTEETT]'])
-        # self.tokenizer.add_tokens(['[ENDOFEETT]'])
 
-        # self.tokenizer.pad_token = self.tokenizer.eos_token
+
         self.tokenizer = init_tokenizer(self.base_model_name)
 
         self.transforms = self.get_transforms()
@@ -237,6 +222,20 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.total_num_frames = total_num_frames
         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
 
+
+        self.calvin_basedir = '/home/nikepupu/Desktop/calvin/dataset/calvin_debug_dataset/training'
+        # load all npz files under the directory
+        # self.episodes = []
+        self.calvin_files = []
+        for file in os.listdir(self.calvin_basedir):
+            if file.endswith('.npz'):
+                self.files.append(os.path.join(self.calvin_basedir, file))
+        
+        self.calvin_files = sorted(self.calvin_files)
+
+        self.annotation = np.load(os.path.join(self.calvin_basedir, 'lang_annotations', 'auto_lang_ann.npy'), allow_pickle=True)
+
+        # self.dataset_len = min(len(self.files), len(self.metadata), len(self.annotation))
     def _load_metadata(self):
         pass
 

@@ -33,6 +33,16 @@ from lavis.runners import *
 from lavis.tasks import *
 
 
+
+
+
+import tempfile
+import torch.distributed as dist
+import torch.nn as nn
+import torch.optim as optim
+from common import ToyModel
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Training")
 
@@ -108,6 +118,8 @@ def main():
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets
     )
     runner.train()
+    
+    dist.destroy_process_group()
 
 
 if __name__ == "__main__":
