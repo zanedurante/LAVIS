@@ -235,11 +235,13 @@ class RobotTransformer(Blip2Base):
 
         loss1 = 0.0
         loss2 = 0.0
+        loss3 = 0.0
         
         epoch = samples["epoch"]
 
         robot_samples = samples['robot']
         minecraft_samples = samples['minecraft']
+        calvin_samples = samples['calvin']
      
         # processing robotics data 
         if robot_samples:
@@ -326,7 +328,79 @@ class RobotTransformer(Blip2Base):
 
          
             # return {"loss": total_loss, "pred": pred, "image": image, 'mask': mask, 'predict_los': loss}
+        if calvin_samples:
+            image = calvin_samples["video"].to(torch.float32)
+            instructions = calvin_samples["instructions"].to(image.device)
 
+            actions = calvin_samples["actions"].to(image.device)
+            robot_state = calvin_samples["robot_state"].to(image.device)
+            
+            max_length = image.shape[1]
+            # print('start training')
+            # print(samples.keys())
+        
+        
+            
+            with autocast(dtype=torch.float16):
+                instruction_embeds = self.model.model.get_input_embeddings()(instructions)
+                # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
+                total_embeddings = instruction_embeds.clone()
+                
+                frames_embeddings = []
+                b, t, c, h, w = image.shape
+                video_batch = image.reshape(b * t, c, h, w)
+
+                # if epoch < 60 and self.training:
+                features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
+                image_embeds = self.ln_vision(features)
+                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+                # else:
+                #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
+                #     image_embeds = self.ln_vision(features)
+                #     pred = None
+                
+                image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
+                image_embeds = self.linear_projection(image_embeds)
+
+                for i in range(t):
+                    frames_embeddings.append(image_embeds[:, i, :, :])
+                
+
+                # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+                
+                
+                labels = instructions.clone().to(image.device)
+                for idx in range(max_length):  
+                    action_input_ids = actions[:, idx, :].clone()         
+                    action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
+                    
+                    robot_state_input_ids = robot_state[:, idx, :].clone()
+                    robot_state_embeddings = self.model.model.get_input_embeddings()(robot_state_input_ids)
+        
+                    image_embeddings = frames_embeddings[idx]
+                    
+                    image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+                    robot_state_embeddings_label = torch.ones((b, robot_state_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+                   
+
+                    total_embeddings = torch.cat((total_embeddings, image_embeddings,
+                                                robot_state_embeddings, action_embeddings), dim = 1 )
+                    
+                    #prepend -100 to labels for image patches
+                    labels = torch.cat((labels.long(), 
+                                        image_label.long(),
+                                        robot_state_embeddings_label.long(),
+                                            action_input_ids.clone().long()), dim=1)
+                    # exit()
+                    # Generate the next token
+                    # TODO: replace image with image special token in label
+                    
+                output = self.model(
+                    inputs_embeds = total_embeddings,
+                    labels = labels,
+                )
+                loss2 = output.loss
         # processing minecraft data
         if minecraft_samples:
             if "image" in minecraft_samples.keys():
@@ -422,12 +496,14 @@ class RobotTransformer(Blip2Base):
                         inputs_embeds = total_embeddings,
                         labels = labels,
                     )
-                    loss2 = output.loss
-            
+                    loss3 = output.loss
+        
+        
+
             
 
         
-        total_loss += 2 * (loss1 + loss2) + mae_loss
+        total_loss += 2 * (loss1 + loss2 + loss3) + mae_loss
         return {"loss": total_loss}
 
 

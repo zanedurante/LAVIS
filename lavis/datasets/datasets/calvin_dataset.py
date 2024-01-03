@@ -334,20 +334,21 @@ if __name__ == "__main__":
                     drop_last=True if is_train else False,
                 )
     for batch in loader:
+        print(batch['video'].shape)
         # print(batch)
-        print(batch.keys())
+        # print(batch.keys())
 
-        print(batch['robot_state'].shape)
-        print(batch['robot_state'][0][0])
-        words = ds.tokenizer.convert_ids_to_tokens(batch['robot_state'][0][0])
-        print(words)
-        instr = batch['instructions'][0]
-        words = ds.tokenizer.convert_ids_to_tokens(instr)
-        print(words)
-        action = batch['actions'][0][0]
-        words = ds.tokenizer.convert_ids_to_tokens(action)
-        print(words)
-        exit()
+        # print(batch['robot_state'].shape)
+        # print(batch['robot_state'][0][0])
+        # words = ds.tokenizer.convert_ids_to_tokens(batch['robot_state'][0][0])
+        # print(words)
+        # instr = batch['instructions'][0]
+        # words = ds.tokenizer.convert_ids_to_tokens(instr)
+        # print(words)
+        # action = batch['actions'][0][0]
+        # words = ds.tokenizer.convert_ids_to_tokens(action)
+        # print(words)
+        # exit()
     # print(len(ds))
     # instr = ds[1][1]
     # l = len(instr)

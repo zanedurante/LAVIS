@@ -2,6 +2,8 @@ from transformers import  AutoTokenizer
 
 def init_tokenizer(base_model_name):
         tokenizer =  AutoTokenizer.from_pretrained(base_model_name)
+
+        # actions for language table
         for i in range(21):
             tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
             tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
@@ -17,6 +19,8 @@ def init_tokenizer(base_model_name):
         tokenizer.add_tokens(['[STARTEETT]'])
         tokenizer.add_tokens(['[ENDOFEETT]'])
         tokenizer.pad_token = tokenizer.eos_token
+
+        # actions for minecraft
 
         NOOP_ACTION = {
             "ESC": 0,
@@ -53,5 +57,16 @@ def init_tokenizer(base_model_name):
             camera_actions.extend([camera_actionx, camera_actiony])
         
         tokenizer.add_tokens(camera_actions)
+
+        # actions for calvin
+        for i in range(101):
+            tokenizer.add_tokens([f"[ROBOTACTION0_{i}]", f"[ROBOTACTION1_{i}]", f"[ROBOTACTION2_{i}]",
+                                       f"[ROBOTACTION3_{i}]", f"[ROBOTACTION4_{i}]", f"[ROBOTACTION5_{i}]"])
+        
+        for i in range(14):
+            for j in range(101):
+                tokenizer.add_tokens([f"[ROBOTSTATE{i}_{j}]"])
+        
+        tokenizer.add_tokens(['[GRIPPER_OPEN]', '[GRIPPER_CLOSE]', '[GRIPPER_OPENED]', '[GRIPPER_CLOSED]'])
 
         return tokenizer

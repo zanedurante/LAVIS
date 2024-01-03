@@ -13,6 +13,8 @@ from collections import Counter
 from lavis.datasets.datasets.trio_video_caption_dataset import TrioVideoCaptionDataset
 from lavis.models.model_utils import init_tokenizer
 from torch.utils.data.dataloader import default_collate
+import yaml
+
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
@@ -49,6 +51,15 @@ def init_transform_dict(input_res=224,
     }
     return tsfm_dict
 
+# Function to pad a tensor to a target size
+def pad_tensor(input_tensor, target_size):
+        
+        # Calculate padding size
+        pad_size = target_size - input_tensor.size(1)
+        last_observation = input_tensor[:, -1, :, :, :].unsqueeze(1).repeat(1, pad_size, 1, 1, 1)
+        # Apply padding
+        padded_tensor = torch.cat((input_tensor, last_observation), dim=1)
+        return padded_tensor
 
 def get_transforms(split):
     if split in ['train', 'val', 'test']:
@@ -200,7 +211,9 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.basedir = '/mnt/languagetablesim'
       
         print('loading metadata for robot')
-        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+        # with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+        #     self.files = f.read().splitlines() 
+        with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         print('loading metadata for robot done')
         self.files = sorted(self.files)
@@ -216,51 +229,51 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.transforms = self.get_transforms()
         # ================== load metadata ==================
         print('loading metadata for minecraft')
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         print('loading metadata for minecraft done')
         self.total_num_frames = total_num_frames
         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
 
-
+        # ================== load metadata for calvin =================
         self.calvin_basedir = '/home/nikepupu/Desktop/calvin/dataset/calvin_debug_dataset/training'
-        # load all npz files under the directory
-        # self.episodes = []
-        self.calvin_files = []
-        for file in os.listdir(self.calvin_basedir):
-            if file.endswith('.npz'):
-                self.files.append(os.path.join(self.calvin_basedir, file))
+        self.annotation = np.load(os.path.join(self.calvin_basedir, 'lang_annotations', 'auto_lang_ann.npy'), allow_pickle=True).item()
+        with open(os.path.join(self.calvin_basedir,  'statistics.yaml'), 'r') as file:
+            self.statistics = yaml.load(file, Loader=yaml.FullLoader)
         
-        self.calvin_files = sorted(self.calvin_files)
+        self.robot_obs_mean = self.statistics['robot_obs'][0]['mean']
+        self.robot_obs_std = self.statistics['robot_obs'][0]['std']
 
-        self.annotation = np.load(os.path.join(self.calvin_basedir, 'lang_annotations', 'auto_lang_ann.npy'), allow_pickle=True)
+        self.language =  self.annotation['language']['ann']
+       
+        self.annotated_episodis = self.annotation['info']['indx']
 
-        # self.dataset_len = min(len(self.files), len(self.metadata), len(self.annotation))
+        def split_into_segments(ranges, languages):
+            split_ranges = []
+            for (start, end), lan in zip(ranges, languages):
+                while start <= end:
+                    # Calculate new end ensuring the range is at most 9 units
+                    new_end = min(start + 8, end)
+                    # Append the new segment
+                    split_ranges.append((start, new_end, lan))
+                    # Update start for next segment
+                    start = new_end + 1
+            return split_ranges
+        
+        self.annotated_episodis = split_into_segments(self.annotated_episodis, self.language)
+        
+        
+
+        
     def _load_metadata(self):
         pass
 
     def __len__(self):
-        return len(self.files) + len(self.metadata)
+        length = min(len(self.files), len(self.metadata), len(self.annotated_episodis))
+        return length * 3
     
-    def collater(self, samples):
-        # print('start collate')
-        minecraft_samples = []
-        robot_samples = []
-        # print('samples in collate:  ', samples)
-        for sample in samples:
-            # print(sample.keys())
-            if sample['type'] == 'minecraft':
-                del sample['effector_target_translation']
-                del sample['effector_translation']
-                minecraft_samples.append(sample)
-            else:
-                robot_samples.append(sample)
-
-        if len(minecraft_samples) > 0:
-            minecraft_return = default_collate(minecraft_samples)
-        else:
-            minecraft_return = None
-
+    def prepare_language_table_samples(self, robot_samples):
         if len(robot_samples) > 0:
             obs_batch = []
             instrs_batch = []
@@ -268,18 +281,6 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             effector_target_translation = []
             effector_translation = []
             m_obs = 9
-
-            # Function to pad a tensor to a target size
-            def pad_tensor(input_tensor, target_size):
-                
-                # Calculate padding size
-                pad_size = target_size - input_tensor.size(1)
-                last_observation = input_tensor[:, -1, :, :, :].unsqueeze(1).repeat(1, pad_size, 1, 1, 1)
-                # Apply padding
-                padded_tensor = torch.cat((input_tensor, last_observation), dim=1)
-                return padded_tensor
-            
-                # return F.pad(input_tensor, (0, 0, 0, 0, 0, 0, 0, pad_size), "constant", 0)
 
             for sample in robot_samples:     
                 # print(sample)       
@@ -368,12 +369,125 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             }
         else:
             robot_return = None
+        return robot_return
+    
+    def prepare_calvin_samples(self, calvin_samples):
+        obs_batch = []
+        instrs_batch = []
+        actions_batch = []
+        robot_states = []
+        m_obs = 9
+        
+        for sample in calvin_samples:            
+            obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
+            obs_batch.append(obs)
+            instr = sample['instructions'][0]
+            instrs_batch.append(instr)
+            actions = sample['action']
+            robot_states.append(sample['state_obs'])
+            
+            actions_batch.append(actions)
+
+
+        for batch in actions_batch:
+            while len(batch) < m_obs:
+                batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
+        
+        for batch in robot_states:
+            while len(batch) < m_obs:
+                batch.append(batch[-1])
+        
+  
+        
+        obs_batch = torch.cat(obs_batch, dim=0)
+        obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
+        
+        instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
+                                      truncation=True, max_length=200, add_special_tokens = False)
+        instrs_batch = instrs_batch.input_ids
+        max_len = max([len(action) for action in actions_batch])
+        for action_lst in actions_batch:
+            action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
+
+
+
+        a_batch = []
+        for action_batch in actions_batch:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200,  add_special_tokens = False)
+            tmp = tmp.input_ids
+            a_batch.append(tmp)
+
+        state_batch = []
+       
+        for action_batch in robot_states:
+            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200,  add_special_tokens = False)
+            tmp = tmp.input_ids
+            state_batch.append(tmp)
+        
+
+        a_batch = torch.stack(a_batch, dim=0) 
+        obs_batch = obs_batch.float() / 255
+
+        obs_batch = torch.stack([
+            torch.stack([
+                self.transforms(frame) for frame in video_sequence
+            ]) for video_sequence in obs_batch
+        ])
+
+        state_batch = torch.stack(state_batch, dim=0) 
+       
+        return {
+            'video':  obs_batch, 
+            'instructions': instrs_batch, 
+            'actions': a_batch,
+            'robot_state': state_batch,
+        }
+
+    
+    def collater(self, samples):
+
+        
+        
+        # print('start collate')
+        minecraft_samples = []
+        robot_samples = []
+        calvin_samples = []
+        # print('samples in collate:  ', samples)
+        for sample in samples:
+            # print(sample.keys())
+            if sample['type'] == 'minecraft':
+                del sample['effector_target_translation']
+                del sample['effector_translation']
+                del sample['state_obs']
+                minecraft_samples.append(sample)
+            elif sample['type'] == 'calvin':
+                del sample['effector_target_translation']
+                del sample['effector_translation']
+                calvin_samples.append(sample)
+            else:
+                robot_samples.append(sample)
+
+        if len(minecraft_samples) > 0:
+            minecraft_return = default_collate(minecraft_samples)
+        else:
+            minecraft_return = None
+    
+        if len(robot_samples) > 0:
+            robot_return = self.prepare_language_table_samples(robot_samples)
+        else:
+            robot_return = None
+        
+        if len(calvin_samples) > 0:
+            calvin_return = self.prepare_calvin_samples(calvin_samples)
+        else:
+            calvin_return = None
 
         # print(minecraft_return)
         # print(robot_return)
         return {
             'minecraft': minecraft_return,
-            'robot': robot_return
+            'robot': robot_return,
+            'calvin': calvin_return
         }
         
     
@@ -405,15 +519,23 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
     
 
     def __getitem__(self, index):
-        import random
-        dataset_type = random.choice(['minecraft', 'robot'])
-
-        if dataset_type == 'minecraft':
-            index_to_use = random.randint(0, len(self.metadata)-1)
-            return self.getitem1(index_to_use)
+        # import random
+        #dataset_type = random.choice(['minecraft', 'robot', 'calvin'])
+        
+        if index % 3 == 0:
+            dataset_type = 'minecraft'
+        elif index % 3 == 1:
+            dataset_type = 'robot'
         else:
-            index_to_use = random.randint(0, len(self.files)-1)
+            dataset_type = 'calvin'
+
+        index_to_use = index // 3
+        if dataset_type == 'minecraft':
+            return self.getitem1(index_to_use)
+        elif dataset_type == 'robot':
             return self.getitem2(index_to_use)
+        else:
+            return self.getitem3(index_to_use)
     
 
     def getitem1(self, index):
@@ -444,7 +566,8 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             "action": caption, # Correct caption
             "type": 'minecraft',
             "effector_target_translation": None,
-            "effector_translation": None
+            "effector_translation": None,
+            "state_obs": None
         }
     
     
@@ -491,6 +614,71 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             "effector_translation": effector_translations,
             "effector_target_translation": effector_target_translation,
             "type": 'robot',
+            "state_obs": None
         }
 
         return to_return
+    
+    def getitem3(self, index):
+        start, end, language = self.annotated_episodis[index]
+        # format start index to something like this: episode_0358663
+
+        trajectory = []
+        for idx in range(start, end+1):
+            file = f"episode_{idx:07d}"
+            tmp = np.load(os.path.join(self.calvin_basedir, f'{file}.npz'), allow_pickle=True)
+            trajectory.append(tmp)
+
+
+  
+
+        obs = []
+        instrs = []
+        actions = []
+        state_obs = []
+      
+        for step in trajectory:
+            
+            obs.append(step['rgb_static'])
+            instruction = language
+            instrs.append(instruction)
+            action = step['rel_actions']
+            result = '[STARTACTION]'
+            for idx in range(6):
+                tmp =  self.get_bin_id(action[idx], -1, 1, 100)
+                result += f'[ROBOTACTION{idx}_{tmp}]'
+            if action[6] == 1:
+                result += '[GRIPPER_OPEN]'
+            else:
+                result += '[GRIPPER_CLOSE]'
+            result += '[ENDOFACTION]'
+            actions.append(result)
+
+            state = step['robot_obs']
+            result = '[STARTSTATE]'
+            for idx in range(14):
+                tmp =  self.get_bin_id(state[idx], self.robot_obs_mean[idx] - 3 * self.robot_obs_std[idx], 
+                                        self.robot_obs_mean[idx] + 3 * self.robot_obs_std[idx], 100)
+                result += f'[ROBOTSTATE{idx}_{tmp}]'
+            
+            if state[14] == 1:
+                result += '[GRIPPER_OPENED]'
+            else:
+                result += '[GRIPPER_CLOSED]'
+
+            result += '[ENDOFSTATE]'
+            state_obs.append(result)
+                # result += f'[ROBOTACTION{idx}_{tmp}]'
+            
+
+      
+    
+        return {
+            "observations": obs,
+            'state_obs': state_obs,
+            "instructions": instrs, 
+            "action": actions,
+            "effector_target_translation": None,
+            "effector_translation": None,
+            "type": 'calvin'
+        }
