@@ -100,7 +100,7 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCRa
     gpus_per_node = torch.cuda.device_count()
     world_size = args.get("WORLD_SIZE")
     gpu_rank = args.get("LOCAL_RANK")
-    single_gpu = False
+   
     if world_size is None:
         world_size = 1
         single_gpu = True

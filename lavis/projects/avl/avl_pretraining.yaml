@@ -35,10 +35,10 @@ run:
   init_lr: 1.00e-4
   min_lr: 5.0e-6
   weight_decay: 0.05
-  max_epoch: 81
-  batch_size_train: 2
-  batch_size_eval: 2
-  num_workers: 0
+  max_epoch: 101
+  batch_size_train: 6
+  batch_size_eval: 6
+  num_workers: 6
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation

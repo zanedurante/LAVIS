@@ -211,33 +211,28 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.basedir = '/mnt/languagetablesim'
       
         print('loading metadata for robot')
-        # with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
-        #     self.files = f.read().splitlines() 
-        with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
             self.files = f.read().splitlines() 
+        # with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
+        #     self.files = f.read().splitlines() 
         print('loading metadata for robot done')
         self.files = sorted(self.files)
-        total = len(self.files)
-        self.files = self.files
                 
         self.base_model_name = "facebook/opt-125m"
 
-
-
-        self.tokenizer = init_tokenizer(self.base_model_name)
-
         self.transforms = self.get_transforms()
+        self.language_table_bin_size = 100
         # ================== load metadata ==================
         print('loading metadata for minecraft')
-        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
+        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         print('loading metadata for minecraft done')
         self.total_num_frames = total_num_frames
         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
 
         # ================== load metadata for calvin =================
-        self.calvin_basedir = '/home/nikepupu/Desktop/calvin/dataset/calvin_debug_dataset/training'
+        self.calvin_basedir = '/mnt/calvin/training'
         self.annotation = np.load(os.path.join(self.calvin_basedir, 'lang_annotations', 'auto_lang_ann.npy'), allow_pickle=True).item()
         with open(os.path.join(self.calvin_basedir,  'statistics.yaml'), 'r') as file:
             self.statistics = yaml.load(file, Loader=yaml.FullLoader)
@@ -262,9 +257,14 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             return split_ranges
         
         self.annotated_episodis = split_into_segments(self.annotated_episodis, self.language)
+        self.calvin_bin_size = 100
         
-        
+        bin_sizes = {
+            'language_table': self.language_table_bin_size,
+            'calvin': self.calvin_bin_size
+        }
 
+        self.tokenizer = init_tokenizer(self.base_model_name, bin_sizes=bin_sizes)
         
     def _load_metadata(self):
         pass
@@ -589,17 +589,17 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 20))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 20))
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, self.language_table_bin_size))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, self.language_table_bin_size))
             effector_translations.append(f"[STARTEET][ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
 
-            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 20))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 20))
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, self.language_table_bin_size))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, self.language_table_bin_size))
             effector_target_translation.append(f"[STARTEETT][ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
 
             if not step['is_terminal']:
-                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 20))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 20))
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, self.language_table_bin_size))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, self.language_table_bin_size))
                 actions.append(f"[STARTACTION][ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
@@ -645,7 +645,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             action = step['rel_actions']
             result = '[STARTACTION]'
             for idx in range(6):
-                tmp =  self.get_bin_id(action[idx], -1, 1, 100)
+                tmp =  self.get_bin_id(action[idx], -1, 1, self.calvin_bin_size)
                 result += f'[ROBOTACTION{idx}_{tmp}]'
             if action[6] == 1:
                 result += '[GRIPPER_OPEN]'
@@ -658,7 +658,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             result = '[STARTSTATE]'
             for idx in range(14):
                 tmp =  self.get_bin_id(state[idx], self.robot_obs_mean[idx] - 3 * self.robot_obs_std[idx], 
-                                        self.robot_obs_mean[idx] + 3 * self.robot_obs_std[idx], 100)
+                                        self.robot_obs_mean[idx] + 3 * self.robot_obs_std[idx], self.calvin_bin_size)
                 result += f'[ROBOTSTATE{idx}_{tmp}]'
             
             if state[14] == 1:

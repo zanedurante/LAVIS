@@ -238,17 +238,17 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 20))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 20))
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
             effector_translations.append(f"[STARTEET][ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
 
-            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 20))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 20))
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
             effector_target_translation.append(f"[STARTEETT][ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
 
             if not step['is_terminal']:
-                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 20))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 20))
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
                 actions.append(f"[STARTACTION][ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
