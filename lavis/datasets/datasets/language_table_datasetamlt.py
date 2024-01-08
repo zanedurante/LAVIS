@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from lavis.datasets.datasets.base_dataset import BaseDataset
 from transformers import AutoTokenizer
 from torchvision import transforms
-
+from lavis.models.model_utils import init_tokenizer
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
@@ -54,36 +54,24 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
     """
 
     """
-    def __init__(self):
+    def __init__(self, finetune=False):
         self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
         with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         self.files = sorted(self.files)
-        total = len(self.files)
-        self.files = self.files
-                
+ 
         self.base_model_name = "facebook/opt-125m"
-        self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(21):
-            self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
+        bin_sizes = {
+            'language_table': 100,
+            'calvin': 100
+        }
+        self.tokenizer =  init_tokenizer(bin_sizes=bin_sizes, base_model_name=self.base_model_name)
         
-        self.tokenizer.add_tokens(['[ENDOFACTION]'])
-        self.tokenizer.add_tokens(['[STARTACTION]'])
-        self.tokenizer.add_tokens(['[TERMINAL]'])
-        
-        self.tokenizer.add_tokens(['[STARTEET]'])
-        self.tokenizer.add_tokens(['[ENDOFEET]'])
-
-        self.tokenizer.add_tokens(['[STARTEETT]'])
-        self.tokenizer.add_tokens(['[ENDOFEETT]'])
-
-        self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.transforms = self.get_transforms()
+        self.finetune = finetune
         
         
     def __len__(self):
@@ -186,12 +174,17 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         # print(obs_batch.shape)
         # print(instrs_batch)
         # exit()
-        return {
-            'video':  obs_batch, 
-            'instructions': instrs_batch, 
-            'actions': a_batch,
-            'effector_target_translation': eet_batch,
-            'effector_translation': et_batch
+        return { 
+            'robot':{
+                'video':  obs_batch, 
+                'instructions': instrs_batch, 
+                'actions': a_batch,
+                'effector_target_translation': eet_batch,
+                'effector_translation': et_batch
+                },
+
+            'finetune': self.finetune
+
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
@@ -268,7 +261,7 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
     """
 
     """
-    def __init__(self):
+    def __init__(self, finetune=False):
         self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
@@ -291,6 +284,8 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.transforms = self.get_transforms()
+
+        self.finetune = finetune
         
         
     def __len__(self):
@@ -391,11 +386,15 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         # print(instrs_batch)
         # exit()
         return {
-            'video':  obs_batch, 
-            'instructions': instrs_batch, 
-            'actions': a_batch,
-            'effector_target_translation': eet_batch,
-            'effector_translation': et_batch
+            'robot':{
+                'video':  obs_batch, 
+                'instructions': instrs_batch, 
+                'actions': a_batch,
+                'effector_target_translation': eet_batch,
+                'effector_translation': et_batch
+                },
+                
+            'finetune': self.finetune
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):

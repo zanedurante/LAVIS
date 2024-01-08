@@ -11,10 +11,13 @@ model:
   vit_model: "clip_b"
   random_init_qformer: True
   num_frames: 9
+  drop_path_rate: 0.0
+  mae_docoder: False
 
 datasets:
   language_tableamlt: # name of the dataset builder
     data_type: videos
+    finetune: True
 
 run:
   task: language_table # TODO: Add associated metrics
@@ -23,10 +26,10 @@ run:
   init_lr: 1.00e-4
   min_lr: 5.0e-6
   weight_decay: 0.05
-  max_epoch: 81
-  batch_size_train: 4
-  batch_size_eval: 4
-  num_workers: 4
+  max_epoch: 101
+  batch_size_train: 1
+  batch_size_eval: 1
+  num_workers: 1
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
@@ -35,13 +38,13 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/output/Trio/Language_Table"
+  output_dir: "/mnt/datasets_mnt/output/Trio/LanguageTableFineTune"
 
   # logging
   log: wandb
 
   amp: True
-  resume_ckpt_path: null #"/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130143/checkpoint_40.pth"
+  resume_ckpt_path:  "/mnt/datasets_mnt/output/Trio/Pretraining/20240105081/checkpoint_50.pth" # "/home/nikepupu/Downloads/checkpoint_48.pth"
 
   evaluate: False 
   train_splits: ["train"]
@@ -49,6 +52,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 32
+  world_size: 48
   dist_url: "env://"
   distributed: True

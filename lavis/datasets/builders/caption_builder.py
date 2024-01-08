@@ -109,11 +109,12 @@ class LanguageTableBuilderLocal(BaseDatasetBuilder):
 
         self.build_processors()
         
-       
+        finetune = self.config.get("finetune", False)
 
         for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
             is_train = split == "train"
             datasets[split] = dataset_cls(
+                finetune=finetune
             )
 
         return datasets
@@ -135,11 +136,12 @@ class LanguageTableBuilderAMLT(BaseDatasetBuilder):
 
         self.build_processors()
         
-       
+        finetune = self.config.get("finetune", False)
 
         for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
             is_train = split == "train"
             datasets[split] = dataset_cls(
+                finetune=finetune
             )
 
         return datasets

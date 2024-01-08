@@ -101,30 +101,32 @@ def init_distributed_gcr(): # Special distributed setup for HAI clusters on GCRa
     world_size = args.get("WORLD_SIZE")
     gpu_rank = args.get("LOCAL_RANK")
    
-    if world_size is None:
-        world_size = 1
-        single_gpu = True
+    # if world_size is None:
+    #     world_size = 1
+    #     single_gpu = True
     
-    if node_rank is None:
-        node_rank = 0
+    # if node_rank is None:
+    #     node_rank = 0
 
-    if gpu_rank is None:
-        gpu_rank = 0
+    # if gpu_rank is None:
+    #     gpu_rank = 0
 
     global_rank = node_rank * gpus_per_node + gpu_rank
 
-    if "None" in master_uri: # Use standard init if not set
+    # if "None" in master_uri: # Use standard init if not set
       
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '12323'
-        dist.init_process_group(
-            backend='nccl', rank=global_rank, world_size=world_size
-        )
-    else:
-        dist.init_process_group(
+    #     os.environ['MASTER_ADDR'] = 'localhost'
+    #     os.environ['MASTER_PORT'] = '12323'
+    #     dist.init_process_group(
+    #         backend='nccl', rank=global_rank, world_size=world_size
+    #     )
+    # else:
+    #     dist.init_process_group(
+    #         backend="nccl", init_method=master_uri, world_size=world_size, rank=global_rank
+    #     )
+    dist.init_process_group(
             backend="nccl", init_method=master_uri, world_size=world_size, rank=global_rank
         )
-
     print(
         f"II Running basic DDP example with gpu_rank={gpu_rank}, node_rank={node_rank}, global_rank={global_rank}"
         f" gpus_per_node={gpus_per_node}, world_size={world_size}"

@@ -65,6 +65,7 @@ class RobotTransformer(Blip2Base):
         few_shot_prob=0,
         qformer_text_input=True,
         num_frames=4,
+        mae_decoder = True,
     ):
         """
         apply_lemmatizer: when set to True, postprocess predict_answers() result with lemmas.
@@ -76,7 +77,7 @@ class RobotTransformer(Blip2Base):
         self.tokenizer = init_tokenizer(self.base_model_name)
         self.start_token_id = self.tokenizer.bos_token_id
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
-            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames
+            vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames, mae_decoder=mae_decoder
         )
 
         self.model = AutoModelForCausalLM.from_pretrained(self.base_model_name ,
@@ -238,10 +239,24 @@ class RobotTransformer(Blip2Base):
         loss3 = 0.0
         
         epoch = samples["epoch"]
+        finetune = samples['finetune']
 
-        robot_samples = samples['robot']
-        minecraft_samples = samples['minecraft']
-        calvin_samples = samples['calvin']
+        if 'robot' in samples.keys():
+            robot_samples = samples['robot']
+        else:
+            robot_samples = None
+
+        if 'minecraft' in samples.keys():        
+            minecraft_samples = samples['minecraft']
+        else:
+            minecraft_samples = None
+
+        if 'calvin' in samples.keys():
+            calvin_samples = samples['calvin']
+        else:
+            calvin_samples = None
+
+        
      
         # processing robotics data 
         if robot_samples:
@@ -270,8 +285,9 @@ class RobotTransformer(Blip2Base):
                 # if epoch < 60 and self.training:
                 features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
                 image_embeds = self.ln_vision(features)
-                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+                if not finetune:
+                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
                 # else:
                 #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
                 #     image_embeds = self.ln_vision(features)
@@ -353,8 +369,9 @@ class RobotTransformer(Blip2Base):
                 # if epoch < 60 and self.training:
                 features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
                 image_embeds = self.ln_vision(features)
-                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+                if not finetune:
+                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
                 # else:
                 #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
                 #     image_embeds = self.ln_vision(features)
@@ -448,8 +465,10 @@ class RobotTransformer(Blip2Base):
 
                 features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
                 image_embeds = self.ln_vision(features)
-                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+
+                if not finetune:
+                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
 
                 image_embeds = image_embeds.reshape( b, self.num_frames, image_embeds.shape[-2], image_embeds.shape[-1])
 
@@ -498,13 +517,12 @@ class RobotTransformer(Blip2Base):
                     )
                     loss3 = output.loss
         
-        
-
-            
-
-        
-        total_loss += 2 * (loss1 + loss2 + loss3) + mae_loss
-        return {"loss": total_loss}
+        with autocast(dtype=torch.float16):
+            if finetune:
+                total_loss = loss1 + loss2 + loss3 
+            else:
+                total_loss = 2 * (loss1 + loss2 + loss3) + mae_loss
+            return {"loss": total_loss}
 
 
     @classmethod
@@ -533,6 +551,8 @@ class RobotTransformer(Blip2Base):
 
         qformer_text_input = cfg.get("qformer_text_input", True)
 
+        mae_deocder = cfg.get("mae_decoder", True)
+
         model = cls(
             vit_model=vit_model,
             img_size=img_size,
@@ -550,6 +570,7 @@ class RobotTransformer(Blip2Base):
             few_shot_prob=few_shot_prob,
             qformer_text_input=qformer_text_input,
             num_frames=num_frames,
+            mae_decoder = mae_deocder
         )
 
         # if qformer_text_input:

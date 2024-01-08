@@ -399,7 +399,7 @@ class RunnerBase:
     
                             # self.log_stats({'agg_metrics', val_log}, split_name)
                     # if cur_epoch % 2 == 0 and cur_epoch > 0:
-                    #     self._save_checkpoint(cur_epoch, is_best=False)
+                    self._save_checkpoint(cur_epoch, is_best=False)
 
             else:
                 # if no validation split is provided, we just save the checkpoint at the end of each epoch.

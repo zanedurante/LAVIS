@@ -62,7 +62,7 @@ class Blip2Base(BaseModel):
         return Qformer, query_tokens
 
     def init_vision_encoder(
-        self, model_name, img_size, drop_path_rate, use_grad_checkpoint, precision, num_frames
+        self, model_name, img_size, drop_path_rate, use_grad_checkpoint, precision, num_frames, mae_decoder=True
     ):
         assert model_name in [
             "eva_clip_g",
@@ -76,7 +76,8 @@ class Blip2Base(BaseModel):
 
         # import pdb; pdb.set_trace()
         if model_name == "clip_b":
-            visual_encoder = create_vit_b_video(img_size, drop_path_rate, use_grad_checkpoint, precision, num_frames=num_frames)
+            visual_encoder = create_vit_b_video(img_size, drop_path_rate, use_grad_checkpoint, 
+                                                precision, num_frames=num_frames, mae_decoder=mae_decoder)
         if model_name == "eva_clip_g":
             visual_encoder = create_eva_vit_g(
                 img_size, drop_path_rate, use_grad_checkpoint, precision

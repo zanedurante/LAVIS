@@ -403,7 +403,7 @@ class SpaceTimeTransformer(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None, patch_drop_rate=0.75,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
-                 num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False):
+                 num_frames=8, time_init='rand', freeze_first_frame=False, attention_style='frozen-in-time', clip=False, mae_decoder=True):
         """
         Args:
             img_size (int, tuple): input image size
@@ -435,6 +435,7 @@ class SpaceTimeTransformer(nn.Module):
         self.embed_dim = embed_dim
         self.patch_drop_rate = patch_drop_rate
         self.freeze_first_frame = freeze_first_frame
+        self.mae_decoder = mae_decoder
         if self.freeze_first_frame:
             self.attention_style = "freeze-first-frame"
         else:
@@ -518,42 +519,42 @@ class SpaceTimeTransformer(nn.Module):
        
 
         # --------------------------------------------------------------------------
-        
-        embed_dim = self.embed_dim
-        
-        decoder_embed_dim = 768
-        decoder_depth = 5
-        decoder_num_heads = 16
-        mlp_ratio = 4.
-        norm_layer = nn.LayerNorm
-        norm_pix_loss = False
+        if self.mae_decoder:
+            embed_dim = self.embed_dim
+            
+            decoder_embed_dim = 768
+            decoder_depth = 5
+            decoder_num_heads = 16
+            mlp_ratio = 4.
+            norm_layer = nn.LayerNorm
+            norm_pix_loss = False
 
-        num_patches = self.patch_embed.num_patches
+            num_patches = self.patch_embed.num_patches
 
-        # self.blocks = nn.ModuleList([
-        #     Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True,  norm_layer=norm_layer)
-        #     for i in range(depth)])
-        # self.norm = norm_layer(embed_dim)
+            # self.blocks = nn.ModuleList([
+            #     Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True,  norm_layer=norm_layer)
+            #     for i in range(depth)])
+            # self.norm = norm_layer(embed_dim)
 
-        # MAE decoder specifics
-        
-        self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
+            # MAE decoder specifics
+            
+            self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
+            self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
+            self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
-        self.decoder_blocks = nn.ModuleList([
-            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-            for i in range(decoder_depth)])
-        
-        # self.decoder_temporal_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
+            self.decoder_blocks = nn.ModuleList([
+                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(decoder_depth)])
+            
+            # self.decoder_temporal_embed = nn.Parameter(torch.zeros(1, num_frames, embed_dim))
 
-        self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
-        # --------------------------------------------------------------------------
+            self.decoder_norm = norm_layer(decoder_embed_dim)
+            self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+            # --------------------------------------------------------------------------
 
-        self.norm_pix_loss = norm_pix_loss
+            self.norm_pix_loss = norm_pix_loss
 
         self.initialize_weights()
 
@@ -574,8 +575,9 @@ class SpaceTimeTransformer(nn.Module):
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
-        self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
+        if self.mae_decoder:
+            decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
+            self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
         # w = self.patch_embed.proj.weight.data
@@ -859,13 +861,15 @@ class SpaceTimeTransformer(nn.Module):
         return x, mask, restore_mask
 
 
-def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4):
+def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,precision="fp16",    num_frames = 4, mae_decoder=True):
     model = SpaceTimeTransformer(
         img_size=img_size,
         num_frames=1,
         time_init='zeros',
         freeze_first_frame=False,
+        patch_drop_rate=drop_path_rate,
         clip=True,
+        mae_decoder=mae_decoder
     )
     # model.head = nn.Identity()
     # model.pre_logits = nn.Identity()

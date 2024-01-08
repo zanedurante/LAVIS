@@ -207,7 +207,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
     """
 
     """
-    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4):
+    def __init__(self, vis_processor, text_processor, vis_root, ann_paths, num_skip_frames=None, total_num_frames=4, finetune=False):
         self.basedir = '/mnt/languagetablesim'
       
         print('loading metadata for robot')
@@ -233,6 +233,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
 
         # ================== load metadata for calvin =================
         self.calvin_basedir = '/mnt/calvin/training'
+        # self.calvin_basedir = '/home/nikepupu/Desktop/calvin/dataset/calvin_debug_dataset/training'
         self.annotation = np.load(os.path.join(self.calvin_basedir, 'lang_annotations', 'auto_lang_ann.npy'), allow_pickle=True).item()
         with open(os.path.join(self.calvin_basedir,  'statistics.yaml'), 'r') as file:
             self.statistics = yaml.load(file, Loader=yaml.FullLoader)
@@ -265,6 +266,8 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         }
 
         self.tokenizer = init_tokenizer(self.base_model_name, bin_sizes=bin_sizes)
+
+        self.finetune=finetune
         
     def _load_metadata(self):
         pass
@@ -426,7 +429,11 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         
 
         a_batch = torch.stack(a_batch, dim=0) 
+        # print(obs_batch)
+        # exit()
         obs_batch = obs_batch.float() / 255
+
+
 
         obs_batch = torch.stack([
             torch.stack([
@@ -445,9 +452,6 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
 
     
     def collater(self, samples):
-
-        
-        
         # print('start collate')
         minecraft_samples = []
         robot_samples = []
@@ -487,7 +491,8 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         return {
             'minecraft': minecraft_return,
             'robot': robot_return,
-            'calvin': calvin_return
+            'calvin': calvin_return,
+            'finetune': self.finetune
         }
         
     
