@@ -11,6 +11,7 @@ model:
   vit_model: "clip_b"
   random_init_qformer: True
   num_frames: 9
+  vit_precision: "fp32"
 
 datasets:
   pretraining_amlt: # name of the dataset builder
@@ -36,9 +37,9 @@ run:
   min_lr: 5.0e-6
   weight_decay: 0.05
   max_epoch: 101
-  batch_size_train: 6
-  batch_size_eval: 6
-  num_workers: 6
+  batch_size_train: 4
+  batch_size_eval: 4
+  num_workers: 1
   # accum_grad_iters: 32
 
   # Currently unused args, used for evaluation
@@ -47,12 +48,12 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/Pretraining"
+  output_dir: "/mnt/output/Trio/Pretraining"
 
   # logging
   log: wandb
 
-  amp: True
+  amp: False
   resume_ckpt_path: null #"/home/nikepupu/Desktop/amlt/LAVIS/lavis/output/Trio/Language_Table/20231130143/checkpoint_40.pth"
 
   evaluate: False 
@@ -61,6 +62,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 32
+  world_size: 128
   dist_url: "env://"
   distributed: True

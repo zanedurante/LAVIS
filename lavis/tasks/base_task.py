@@ -7,6 +7,7 @@
 
 import logging
 import os
+import time
 
 import torch
 import torch.distributed as dist
@@ -222,6 +223,7 @@ class BaseTask:
 
         for i in metric_logger.log_every(range(iters_per_epoch), log_freq, header):
             # if using iter-based runner, we stop after iters_per_epoch iterations.
+            start_time = time.time()
             if i >= iters_per_epoch:
                 break
 
@@ -239,6 +241,7 @@ class BaseTask:
 
             lr_scheduler.step(cur_epoch=inner_epoch, cur_step=i)
 
+
             with torch.cuda.amp.autocast(enabled=use_amp):
                 loss, loss_dict = self.train_step(model=model, samples=samples)
                 loss = loss / accum_grad_iters #TODO: not affect loss_dict values for logging
@@ -248,6 +251,14 @@ class BaseTask:
                 scaler.scale(loss).backward()
             else:
                 loss.backward()
+
+            grads = []
+            for p in optimizer.param_groups[0]['params']:
+                grads.append(p.grad.view(-1))
+            grads = torch.cat(grads)
+            #print("LOSS DTYPE", loss.dtype, "GRADIENT DTYPE", grads.dtype)
+            print("gradients", torch.max(torch.abs(grads)), torch.mean(torch.abs(grads)), 'losses', loss_dict)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
 
             # update gradients every accum_grad_iters iterations
             if (i + 1) % accum_grad_iters == 0:
@@ -262,6 +273,10 @@ class BaseTask:
                 wandb.log(loss_dict)
             metric_logger.update(**loss_dict)
             metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+            end_time = time.time()
+            time_to_sleep = (end_time - start_time) * 0.1
+            print("SLEEPING FOR", time_to_sleep)
+            time.sleep(time_to_sleep)
 
         # after train_epoch()
         # gather the stats from all processes

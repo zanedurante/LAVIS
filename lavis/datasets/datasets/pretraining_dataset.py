@@ -224,12 +224,21 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.language_table_bin_size = 100
         # ================== load metadata ==================
         print('loading metadata for minecraft')
-        self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
+        self.converted_csv_path = "/mnt/output/metadata_9_instruct.csv"
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
         # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
         self.metadata = pd.read_csv(self.converted_csv_path)
         print('loading metadata for minecraft done')
         self.total_num_frames = total_num_frames
         super().__init__(vis_processor, text_processor, vis_root, ann_paths, num_skip_frames, total_num_frames)
+
+        # ================== load be metadata ==================
+        print('loading metadata for be')
+        self.be_converted_csv_path = "/mnt/output/be_metadata_9_instruct.csv"
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_20k.csv"
+        # self.converted_csv_path = f"/mnt/datasets_mnt/metadata_9_small.csv"
+        self.be_metadata = pd.read_csv(self.be_converted_csv_path)
+        print('loading metadata for be done')        
 
         # ================== load metadata for calvin =================
         self.calvin_basedir = '/mnt/calvin/training'
@@ -265,13 +274,21 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         }
 
         self.tokenizer = init_tokenizer(self.base_model_name, bin_sizes=bin_sizes)
+
+        frac = 1
+        self.lengths = np.array([len(self.metadata) // frac, len(self.files) // frac, len(self.annotated_episodis) // frac, len(self.be_metadata) // frac])
+        self.clengths = np.cumsum(self.lengths)
+        print("lengths", self.lengths)
         
     def _load_metadata(self):
         pass
 
     def __len__(self):
-        length = min(len(self.files), len(self.metadata), len(self.annotated_episodis))
-        return length * 3
+        return self.clengths[-1] #len(self.files) + len(self.metadata) + len(self.annotated_episodis) + len(self.be_metadata)
+        # length = min(len(self.files), len(self.metadata), len(self.annotated_episodis), len(self.be_metadata))
+        # print(len(self.files), len(self.metadata), len(self.annotated_episodis), len(self.be_metadata))
+        # print("LENGTH IS", length * 4)
+        # return length * 4
     
     def prepare_language_table_samples(self, robot_samples):
         if len(robot_samples) > 0:
@@ -452,6 +469,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         minecraft_samples = []
         robot_samples = []
         calvin_samples = []
+        be_samples = []
         # print('samples in collate:  ', samples)
         for sample in samples:
             # print(sample.keys())
@@ -460,6 +478,11 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
                 del sample['effector_translation']
                 del sample['state_obs']
                 minecraft_samples.append(sample)
+            elif sample['type'] == 'be':
+                del sample['effector_target_translation']
+                del sample['effector_translation']
+                del sample['state_obs']
+                be_samples.append(sample)
             elif sample['type'] == 'calvin':
                 del sample['effector_target_translation']
                 del sample['effector_translation']
@@ -471,6 +494,11 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             minecraft_return = default_collate(minecraft_samples)
         else:
             minecraft_return = None
+
+        if len(be_samples) > 0:
+            be_return = default_collate(be_samples)
+        else:
+            be_return = None
     
         if len(robot_samples) > 0:
             robot_return = self.prepare_language_table_samples(robot_samples)
@@ -487,7 +515,8 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         return {
             'minecraft': minecraft_return,
             'robot': robot_return,
-            'calvin': calvin_return
+            'calvin': calvin_return,
+            'be': be_return
         }
         
     
@@ -521,21 +550,20 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
     def __getitem__(self, index):
         # import random
         #dataset_type = random.choice(['minecraft', 'robot', 'calvin'])
-        
-        if index % 3 == 0:
-            dataset_type = 'minecraft'
-        elif index % 3 == 1:
-            dataset_type = 'robot'
-        else:
-            dataset_type = 'calvin'
+        dataset_types = ['minecraft', 'robot', 'calvin', 'be']
+        dt_id = np.searchsorted(self.clengths, index, side='right')
+        dataset_type = dataset_types[dt_id]
 
-        index_to_use = index // 3
-        if dataset_type == 'minecraft':
-            return self.getitem1(index_to_use)
-        elif dataset_type == 'robot':
-            return self.getitem2(index_to_use)
+        get_item_fn = [self.getitem1, self.getitem2, self.getitem3, self.getitem4]
+
+        if dt_id == 0:
+            index_to_use = index
         else:
-            return self.getitem3(index_to_use)
+            index_to_use = index - self.clengths[dt_id - 1]
+
+        #print(index_to_use, self.lengths[dt_id], index, self.clengths[dt_id])
+
+        return get_item_fn[dt_id](index_to_use)
     
 
     def getitem1(self, index):
@@ -545,6 +573,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
                 ann = self.metadata.iloc[index]
 
                 video_path = ann["video"]
+                # print(video_path)
                 # video_path = video_path[1:] # removing the '.' prefix
                 start_frame = ann.get("start_frame", 0)
                 end_frame = ann.get("end_frame", -1)
@@ -554,7 +583,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
                 video = self.transforms(video)
                 caption = self.text_processor(ann["caption"])
 
-                input_text = self._get_next_prompt() # Inherited from CaptionDataset
+                input_text = self.text_processor(ann["instruction"]) #self._get_next_prompt() # Inherited from CaptionDataset
                 break
             except:
                 index = (index+1) % len(self.metadata)
@@ -681,4 +710,38 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             "effector_target_translation": None,
             "effector_translation": None,
             "type": 'calvin'
+        }
+
+    
+    def getitem4(self, index):
+
+        while True:
+            try:
+                ann = self.be_metadata.iloc[index]
+
+                video_path = ann["video"]
+                # print(video_path)
+                # video_path = video_path[1:] # removing the '.' prefix
+                start_frame = ann.get("start_frame", 0)
+                end_frame = ann.get("end_frame", -1)
+
+
+                video = self._load_video(video_path, start_frame, end_frame)
+                video = self.transforms(video)
+                caption = self.text_processor(ann["caption"])
+
+                input_text = self.text_processor(ann["instruction"]) #self._get_next_prompt() # Inherited from CaptionDataset
+                break
+            except:
+                index = (index+1) % len(self.metadata)
+        # print('video: ', video.shape)
+        # "image_id" is kept to stay compatible with the COCO evaluation format
+        return {
+            "observations": video,
+            "instructions": input_text, # Input prompt
+            "action": caption, # Correct caption
+            "type": 'be',
+            "effector_target_translation": None,
+            "effector_translation": None,
+            "state_obs": None
         }

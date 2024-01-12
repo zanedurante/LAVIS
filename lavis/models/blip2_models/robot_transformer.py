@@ -53,7 +53,7 @@ class RobotTransformer(Blip2Base):
         img_size=224,
         drop_path_rate=0,
         use_grad_checkpoint=False,
-        vit_precision="fp16",
+        vit_precision="fp32",
         freeze_vit=False,
         num_query_token=32,
         t5_model="google/flan-t5-small",
@@ -236,12 +236,14 @@ class RobotTransformer(Blip2Base):
         loss1 = 0.0
         loss2 = 0.0
         loss3 = 0.0
+        loss4 = 0.0
         
         epoch = samples["epoch"]
 
         robot_samples = samples['robot']
-        minecraft_samples = samples['minecraft']
+        mc_samples = samples['minecraft']
         calvin_samples = samples['calvin']
+        be_samples = samples['be']
      
         # processing robotics data 
         if robot_samples:
@@ -258,7 +260,7 @@ class RobotTransformer(Blip2Base):
         
         
             
-            with autocast(dtype=torch.float16):
+            with autocast(dtype=torch.float32):
                 instruction_embeds = self.model.model.get_input_embeddings()(instructions)
                 # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
                 total_embeddings = instruction_embeds.clone()
@@ -341,7 +343,7 @@ class RobotTransformer(Blip2Base):
         
         
             
-            with autocast(dtype=torch.float16):
+            with autocast(dtype=torch.float32):
                 instruction_embeds = self.model.model.get_input_embeddings()(instructions)
                 # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
                 total_embeddings = instruction_embeds.clone()
@@ -402,7 +404,10 @@ class RobotTransformer(Blip2Base):
                 )
                 loss2 = output.loss
         # processing minecraft data
-        if minecraft_samples:
+        for sample_type, minecraft_samples in enumerate([mc_samples, be_samples]):
+            if not minecraft_samples:
+                continue
+            
             if "image" in minecraft_samples.keys():
                 image = minecraft_samples["image"]
             elif "video" in minecraft_samples.keys():
@@ -443,7 +448,7 @@ class RobotTransformer(Blip2Base):
             frames_embeddings = []
             b, t, c, h, w = image.shape
             video_batch = image.reshape(b * t, c, h, w)
-            with autocast(dtype=torch.float16):
+            with autocast(dtype=torch.float32):
                 instruction_embeds = self.model.model.get_input_embeddings()(instructions_tokens.input_ids)
 
                 features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
@@ -496,15 +501,23 @@ class RobotTransformer(Blip2Base):
                         inputs_embeds = total_embeddings,
                         labels = labels,
                     )
-                    loss3 = output.loss
-        
-        
+                    if sample_type == 0:
+                        loss3 = output.loss
+                    else:
+                        loss4 = output.loss            
 
-            
-
         
-        total_loss += 2 * (loss1 + loss2 + loss3) + mae_loss
-        return {"loss": total_loss}
+        total_loss += 2 * (loss1 + loss2 + loss3 + loss4) + mae_loss
+        loss_dict = {"loss": total_loss, 'mae_loss': mae_loss}
+        if loss4 != 0.0:
+            loss_dict['be_loss'] = loss4
+        if loss3 != 0.0:
+            loss_dict['minecraft_loss'] = loss3
+        if loss2 != 0.0:
+            loss_dict['calvin_loss'] = loss2
+        if loss1 != 0.0:
+            loss_dict['langtable_loss'] = loss1
+        return loss_dict
 
 
     @classmethod
@@ -519,7 +532,7 @@ class RobotTransformer(Blip2Base):
 
         drop_path_rate = cfg.get("drop_path_rate", 0)
         use_grad_checkpoint = cfg.get("use_grad_checkpoint", False)
-        vit_precision = cfg.get("vit_precision", "fp16")
+        vit_precision = cfg.get("vit_precision", "fp32")
         freeze_vit = cfg.get("freeze_vit", True)
 
         prompt = cfg.get("prompt", "")
