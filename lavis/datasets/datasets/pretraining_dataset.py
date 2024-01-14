@@ -211,7 +211,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.basedir = '/mnt/languagetablesim'
       
         print('loading metadata for robot')
-        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot_4frame.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         # with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
         #     self.files = f.read().splitlines() 
@@ -258,7 +258,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             for (start, end), lan in zip(ranges, languages):
                 while start <= end:
                     # Calculate new end ensuring the range is at most 9 units
-                    new_end = min(start + 8, end)
+                    new_end = min(start + 3, end)
                     # Append the new segment
                     split_ranges.append((start, new_end, lan))
                     # Update start for next segment
@@ -297,7 +297,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
             actions_batch = []
             effector_target_translation = []
             effector_translation = []
-            m_obs = 9
+            m_obs = 4
 
             for sample in robot_samples:     
                 # print(sample)       
@@ -393,7 +393,7 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         instrs_batch = []
         actions_batch = []
         robot_states = []
-        m_obs = 9
+        m_obs = 4
         
         for sample in calvin_samples:            
             obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
