@@ -18,7 +18,7 @@ import yaml
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
-                        color_jitter=(0, 0, 0),
+                        color_jitter=((0.7, 1.4), (0.7, 1.4), (-0.05, 0.05)),
                         norm_mean=(0.485, 0.456, 0.406),
                         norm_std=(0.229, 0.224, 0.225),
                         use_clip_norm=True):
