@@ -30,7 +30,7 @@ run:
   batch_size_train: 1
   batch_size_eval: 1
   num_workers: 1
-  # accum_grad_iters: 32
+  accum_grad_iters: 4
 
   # Currently unused args, used for evaluation
   max_len: 20
@@ -44,7 +44,7 @@ run:
   log: wandb
 
   amp: True
-  resume_ckpt_path:  "/mnt/datasets_mnt/output/Trio/Pretraining/20240105081/checkpoint_50.pth" # "/home/nikepupu/Downloads/checkpoint_48.pth"
+  resume_ckpt_path:  /home/nikepupu/Downloads/checkpoint_61.pth #"/mnt/datasets_mnt/output/Trio/LanguageTableFineTune/20240108101/checkpoint_52.pth" 
 
   evaluate: False 
   train_splits: ["train"]
@@ -52,6 +52,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 48
+  world_size: 64
   dist_url: "env://"
   distributed: True

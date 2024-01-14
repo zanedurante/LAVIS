@@ -111,13 +111,15 @@ class RobotTransformer(Blip2Base):
         actions_gt = samples["actions"].to(image.device)
         effector_translation = samples["effector_translation"].to(image.device)
         effector_target_translation = samples["effector_target_translation"].to(image.device)
-        print(actions_gt)
+        print( 'action gt: ', actions_gt)
         # exit('action gt')
         
         flat_tokens = [token for sublist in samples["actions"][0] for token in sublist]
-        print(flat_tokens)
+        # print(flat_tokens)
         decoded_string = self.tokenizer.decode(flat_tokens)
+        print('decoded string')
         print(decoded_string)
+        print('======')
 
         max_length = image.shape[1]
         # print('start training')
@@ -145,22 +147,6 @@ class RobotTransformer(Blip2Base):
             for i in range(t):
                 frames_embeddings.append(image_embeds[:, i, :, :])
             
-            # b, t, c, h, w = image.shape
-            # video_batch = image.reshape(b * t, c, h, w)
-
-            # features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
-            # image_embeds = self.ln_vision(features)
-            # pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-            # image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
-            # for p in pred:
-            #     preds.append(p)
-            
-            # for m in mask:
-            #     masks.append(m)
-            
-            # for f in features:
-            #     frames_embeddings.append(f)
-
 
             prediction_embeddings = instruction_embeds.clone()
             
@@ -180,13 +166,13 @@ class RobotTransformer(Blip2Base):
                 effector_translation_embeddings = self.model.model.get_input_embeddings()(effector_translation_input_ids)
 
                 result = self.tokenizer.batch_decode(effector_translation_input_ids, skip_special_tokens=False)
-                print(result)
+                # print(result)
 
                 effector_target_translation_input_ids = effector_target_translation[:, idx, :].clone()
                 effector_target_translation_embeddings = self.model.model.get_input_embeddings()(effector_target_translation_input_ids)
 
                 result = self.tokenizer.batch_decode(effector_target_translation_input_ids, skip_special_tokens=False)
-                print(result)
+                # print(result)
                 
                 prediction_embeddings = torch.cat((total_embeddings, image_embeddings,
                                                    effector_translation_embeddings, effector_target_translation_embeddings ), dim = 1 )
@@ -238,7 +224,6 @@ class RobotTransformer(Blip2Base):
         loss2 = 0.0
         loss3 = 0.0
         
-        epoch = samples["epoch"]
         finetune = samples['finetune']
 
         if 'robot' in samples.keys():

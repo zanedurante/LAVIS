@@ -58,7 +58,7 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
-        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         self.files = sorted(self.files)
  
