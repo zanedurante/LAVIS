@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # mediapy.show_video(frames, fps=5)
 
     DATASET_VERSION = '0.0.1'
-    DATASET_NAME = 'language_table_sim'  # CHANGEME: change this to load another dataset.
+    DATASET_NAME = 'language_table'  # CHANGEME: change this to load another dataset.
 
     dataset_directories = {
         'language_table': 'gs://gresearch/robotics/language_table',
@@ -194,7 +194,14 @@ if __name__ == "__main__":
         chunk_size = 9
         
         for step in steps:
+            rgb = step['observation']['rgb']
+            instruction = step['observation']['instruction']
+            instruction = ''.join(chr(id) for id in instruction if id != 0)
+
+            print(instruction)
             
+            plt.imshow(step['observation']['rgb'])
+            plt.show()
             t = {
                 'observation': step['observation']['rgb'],
                 'action': step['action'],
@@ -205,8 +212,7 @@ if __name__ == "__main__":
                 'is_last': step['is_last'],
                 'is_terminal': step['is_terminal'],
             }
-            instruction = step['observation']['instruction']
-            instruction = ''.join(chr(id) for id in instruction if id != 0)
+            
             x_max = max(x_max, step['observation']['effector_translation'][0])
             x_min = min(x_min, step['observation']['effector_translation'][0])
 
@@ -220,14 +226,14 @@ if __name__ == "__main__":
            
             trajectory.append(t)
             if len(trajectory) == chunk_size:
-                np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
+                # np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
                 trajectory = []
                 chunk_id += 1
 
 
     #     # # save the episode id and the step id to local as npz file
-        if len(trajectory) > 0:
-            np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
+        # if len(trajectory) > 0:
+            # np.savez_compressed(os.path.join(base_path, f'{episode_id}_{chunk_id}.npz'), trajectory=trajectory)
     # print(l_m)
     plt.hist(eet, bins=100)
     plt.show()

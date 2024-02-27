@@ -11,7 +11,7 @@ from lavis.models.model_utils import init_tokenizer
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
-                        color_jitter=(0, 0, 0),
+                        color_jitter=((0.7, 1.4), (0.7, 1.4), (-0.05, 0.05)),
                         norm_mean=(0.485, 0.456, 0.406),
                         norm_std=(0.229, 0.224, 0.225),
                         use_clip_norm=True):
@@ -50,6 +50,17 @@ def get_transforms(split):
         return init_transform_dict()[split]
     else:
         raise ValueError('Split {} not supported.'.format(split))
+    
+# Function to pad a tensor to a target size
+def pad_tensor(input_tensor, target_size):
+        
+        # Calculate padding size
+        pad_size = target_size - input_tensor.size(1)
+        last_observation = input_tensor[:, -1, :, :, :].unsqueeze(1).repeat(1, pad_size, 1, 1, 1)
+        # Apply padding
+        padded_tensor = torch.cat((input_tensor, last_observation), dim=1)
+        return padded_tensor
+
 class LanguageTableDatasetAMLTTrain(BaseDataset):
     """
 
@@ -58,14 +69,18 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
         self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
-        with open(os.path.join(self.basedir, 'robot_small.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot_4frame.txt'), 'r') as f:
             self.files = f.read().splitlines() 
+
         self.files = sorted(self.files)
- 
+        total = len(self.files)
+        # self.files  = self.files[:int(total * 0.9)]
+
         self.base_model_name = "facebook/opt-125m"
+        self.bin_size = 20
         bin_sizes = {
-            'language_table': 100,
-            'calvin': 100
+            'language_table': 20,
+            'calvin': 20
         }
         self.tokenizer =  init_tokenizer(bin_sizes=bin_sizes, base_model_name=self.base_model_name)
         
@@ -77,115 +92,113 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
     def __len__(self):
         return len(self.files)
     
-    def collater(self, samples):
-        obs_batch = []
-        instrs_batch = []
-        actions_batch = []
-        effector_target_translation = []
-        effector_translation = []
-        m_obs = 9
+    def prepare_language_table_samples(self, robot_samples):
+        if len(robot_samples) > 0:
+            obs_batch = []
+            instrs_batch = []
+            actions_batch = []
+            effector_target_translation = []
+            effector_translation = []
+            m_obs = 4
 
-        # Function to pad a tensor to a target size
-        def pad_tensor(input_tensor, target_size):
+            for sample in robot_samples:     
+                # print(sample)       
+                obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
+                obs_batch.append(obs)
+                instr = sample['instructions'][0]
+                instr = ''.join(chr(id) for id in instr if id != 0)
+                instrs_batch.append(instr)
+                actions = sample['action']
+                effector_target_translation.append(sample['effector_target_translation'])
+                effector_translation.append(sample['effector_translation'])
+                # print('actions: ', actions)
+                
+                actions_batch.append(actions)
+
             
-            # Calculate padding size
-            pad_size = target_size - input_tensor.size(1)
-            last_observation = input_tensor[:, -1, :, :, :].unsqueeze(1).repeat(1, pad_size, 1, 1, 1)
-            # Apply padding
-            padded_tensor = torch.cat((input_tensor, last_observation), dim=1)
-            return padded_tensor
-        
-            # return F.pad(input_tensor, (0, 0, 0, 0, 0, 0, 0, pad_size), "constant", 0)
- 
-        for sample in samples:            
-            obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
-            obs_batch.append(obs)
-            instr = sample['instructions'][0]
-            instr = ''.join(chr(id) for id in instr if id != 0)
-            instrs_batch.append(instr)
-            actions = sample['action']
-            effector_target_translation.append(sample['effector_target_translation'])
-            effector_translation.append(sample['effector_translation'])
-            # print('actions: ', actions)
+            for batch in actions_batch:
+                while len(batch) < m_obs:
+                    batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
             
-            actions_batch.append(actions)
+            for batch in effector_target_translation:
+                while len(batch) < m_obs:
+                    batch.append(batch[-1])
+            
+            for batch in effector_translation:
+                while len(batch) < m_obs:
+                    batch.append(batch[-1])
 
+            
+            obs_batch = torch.cat(obs_batch, dim=0)
+            obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
+            
+            instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
+                                        truncation=True, max_length=200,  add_special_tokens = False)
+            instrs_batch = instrs_batch.input_ids
+            max_len = max([len(action) for action in actions_batch])
+            for action_lst in actions_batch:
+                action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
+
+  
+
+            a_batch = []
+            for action_batch in actions_batch:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                a_batch.append(tmp)
+
+            eet_batch = []
+            for action_batch in effector_target_translation:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                eet_batch.append(tmp)
+            
+            et_batch = []
+            for action_batch in effector_translation:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                et_batch.append(tmp)
         
-        for batch in actions_batch:
-            while len(batch) < m_obs:
-                batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
-        
-        for batch in effector_target_translation:
-            while len(batch) < m_obs:
-                batch.append(batch[-1])
-        
-        for batch in effector_translation:
-            while len(batch) < m_obs:
-                batch.append(batch[-1])
 
-        
-        obs_batch = torch.cat(obs_batch, dim=0)
-        obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
-        
-        instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
-                                      truncation=True, max_length=200,  add_special_tokens = False)
-        instrs_batch = instrs_batch.input_ids
-        max_len = max([len(action) for action in actions_batch])
-        for action_lst in actions_batch:
-            action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
+            a_batch = torch.stack(a_batch, dim=0) 
+            obs_batch = obs_batch.float() / 255
 
+            obs_batch = torch.stack([
+                torch.stack([
+                    self.transforms(frame) for frame in video_sequence
+                ]) for video_sequence in obs_batch
+            ])
 
+            eet_batch = torch.stack(eet_batch, dim=0) 
+            et_batch = torch.stack(et_batch, dim=0)
 
-        a_batch = []
-        for action_batch in actions_batch:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
-                                 truncation=True, max_length=200, add_special_tokens = False)
-            tmp = tmp.input_ids
-            a_batch.append(tmp)
-
-        eet_batch = []
-        for action_batch in effector_target_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
-                                 truncation=True, max_length=200, add_special_tokens = False)
-            tmp = tmp.input_ids
-            eet_batch.append(tmp)
-        
-        et_batch = []
-        for action_batch in effector_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
-                                 truncation=True, max_length=200, add_special_tokens = False)
-            tmp = tmp.input_ids
-            et_batch.append(tmp)
-        # print('a batch: ')
-        # print(a_batch)
-        a_batch = torch.stack(a_batch, dim=0) 
-        obs_batch = obs_batch.float() / 255
-
-        obs_batch = torch.stack([
-            torch.stack([
-                self.transforms(frame) for frame in video_sequence
-            ]) for video_sequence in obs_batch
-        ])
-
-        eet_batch = torch.stack(eet_batch, dim=0) 
-        et_batch = torch.stack(et_batch, dim=0)
-
-        # print(a_batch.shape) 
-        # print(obs_batch.shape)
-        # print(instrs_batch)
-        # exit()
-        return { 
-            'robot':{
+            # print(a_batch.shape) 
+            # print(obs_batch.shape)
+            # print(instrs_batch)
+            # exit()
+            robot_return =  {
                 'video':  obs_batch, 
                 'instructions': instrs_batch, 
                 'actions': a_batch,
                 'effector_target_translation': eet_batch,
                 'effector_translation': et_batch
-                },
-
+            }
+        else:
+            robot_return = None
+        return robot_return
+    
+    def collater(self, samples):
+        robot_return = self.prepare_language_table_samples(samples)
+        return {
+           
+            'robot': robot_return,
             'finetune': self.finetune
-
+           
         }
+        
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
         """
@@ -231,17 +244,17 @@ class LanguageTableDatasetAMLTTrain(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 100))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 100))
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, self.bin_size))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, self.bin_size))
             effector_translations.append(f"[STARTEET][ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
 
-            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 100))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 100))
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, self.bin_size))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, self.bin_size))
             effector_target_translation.append(f"[STARTEETT][ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
 
             if not step['is_terminal']:
-                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 100))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 100))
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, self.bin_size))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, self.bin_size))
                 actions.append(f"[STARTACTION][ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
@@ -265,7 +278,7 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
         self.basedir = '/mnt/languagetablesim'
         # load all npz files under the directory
         # self.episodes = []
-        with open(os.path.join(self.basedir, 'robot.txt'), 'r') as f:
+        with open(os.path.join(self.basedir, 'robot_4frame.txt'), 'r') as f:
             self.files = f.read().splitlines() 
         self.files = sorted(self.files)
         total = len(self.files)
@@ -291,111 +304,113 @@ class LanguageTableDatasetAMLTEval(BaseDataset):
     def __len__(self):
         return len(self.files)
     
-    def collater(self, samples):
-        obs_batch = []
-        instrs_batch = []
-        actions_batch = []
-        effector_target_translation = []
-        effector_translation = []
-        m_obs = 9
+    def prepare_language_table_samples(self, robot_samples):
+        if len(robot_samples) > 0:
+            obs_batch = []
+            instrs_batch = []
+            actions_batch = []
+            effector_target_translation = []
+            effector_translation = []
+            m_obs = 4
 
-        # Function to pad a tensor to a target size
-        def pad_tensor(input_tensor, target_size):
+            for sample in robot_samples:     
+                # print(sample)       
+                obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
+                obs_batch.append(obs)
+                instr = sample['instructions'][0]
+                instr = ''.join(chr(id) for id in instr if id != 0)
+                instrs_batch.append(instr)
+                actions = sample['action']
+                effector_target_translation.append(sample['effector_target_translation'])
+                effector_translation.append(sample['effector_translation'])
+                # print('actions: ', actions)
+                
+                actions_batch.append(actions)
+
             
-            # Calculate padding size
-            pad_size = target_size - input_tensor.size(1)
-            last_observation = input_tensor[:, -1, :, :, :].unsqueeze(1).repeat(1, pad_size, 1, 1, 1)
-            # Apply padding
-            padded_tensor = torch.cat((input_tensor, last_observation), dim=1)
-            return padded_tensor
-        
-            # return F.pad(input_tensor, (0, 0, 0, 0, 0, 0, 0, pad_size), "constant", 0)
- 
-        for sample in samples:            
-            obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
-            obs_batch.append(obs)
-            instr = sample['instructions'][0]
-            instr = ''.join(chr(id) for id in instr if id != 0)
-            instrs_batch.append(instr)
-            actions = sample['action']
-            effector_target_translation.append(sample['effector_target_translation'])
-            effector_translation.append(sample['effector_translation'])
-            # print('actions: ', actions)
+            for batch in actions_batch:
+                while len(batch) < m_obs:
+                    batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
             
-            actions_batch.append(actions)
+            for batch in effector_target_translation:
+                while len(batch) < m_obs:
+                    batch.append(batch[-1])
+            
+            for batch in effector_translation:
+                while len(batch) < m_obs:
+                    batch.append(batch[-1])
 
-        
-        for batch in actions_batch:
-            while len(batch) < m_obs:
-                batch.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
-        
-        for batch in effector_target_translation:
-            while len(batch) < m_obs:
-                batch.append(batch[-1])
-        
-        for batch in effector_translation:
-            while len(batch) < m_obs:
-                batch.append(batch[-1])
-
-        
-        obs_batch = torch.cat(obs_batch, dim=0)
-        obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
-        
-        instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
-                                      truncation=True, max_length=200, add_special_tokens = True)
-        instrs_batch = instrs_batch.input_ids
-        max_len = max([len(action) for action in actions_batch])
-        for action_lst in actions_batch:
-            action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
+            
+            obs_batch = torch.cat(obs_batch, dim=0)
+            obs_batch = obs_batch.permute(0, 1, 4, 2, 3)
+            
+            instrs_batch = self.tokenizer(instrs_batch, padding='longest', return_tensors="pt", 
+                                        truncation=True, max_length=200,  add_special_tokens = False)
+            instrs_batch = instrs_batch.input_ids
+            max_len = max([len(action) for action in actions_batch])
+            for action_lst in actions_batch:
+                action_lst.extend(['[ENDOFACTION]'] * (max_len - len(action_lst)))
 
 
 
-        a_batch = []
-        for action_batch in actions_batch:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
-            tmp = tmp.input_ids
-            a_batch.append(tmp)
+            a_batch = []
+            for action_batch in actions_batch:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                a_batch.append(tmp)
 
-        eet_batch = []
-        for action_batch in effector_target_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
-            tmp = tmp.input_ids
-            eet_batch.append(tmp)
-        
-        et_batch = []
-        for action_batch in effector_translation:
-            tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", truncation=True, max_length=200)
-            tmp = tmp.input_ids
-            et_batch.append(tmp)
-        # print('a batch: ')
-        # print(a_batch)
-        a_batch = torch.stack(a_batch, dim=0) 
-        obs_batch = obs_batch.float() / 255
+            eet_batch = []
+            for action_batch in effector_target_translation:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                eet_batch.append(tmp)
+            
+            et_batch = []
+            for action_batch in effector_translation:
+                tmp = self.tokenizer(action_batch, padding='longest', return_tensors="pt", 
+                                    truncation=True, max_length=200, add_special_tokens = False)
+                tmp = tmp.input_ids
+                et_batch.append(tmp)
+            # print('a batch: ')
+            # print(a_batch)
+            a_batch = torch.stack(a_batch, dim=0) 
+            obs_batch = obs_batch.float() / 255
 
-        obs_batch = torch.stack([
-            torch.stack([
-                self.transforms(frame) for frame in video_sequence
-            ]) for video_sequence in obs_batch
-        ])
+            obs_batch = torch.stack([
+                torch.stack([
+                    self.transforms(frame) for frame in video_sequence
+                ]) for video_sequence in obs_batch
+            ])
 
-        eet_batch = torch.stack(eet_batch, dim=0) 
-        et_batch = torch.stack(et_batch, dim=0)
+            eet_batch = torch.stack(eet_batch, dim=0) 
+            et_batch = torch.stack(et_batch, dim=0)
 
-        # print(a_batch.shape) 
-        # print(obs_batch.shape)
-        # print(instrs_batch)
-        # exit()
-        return {
-            'robot':{
+            # print(a_batch.shape) 
+            # print(obs_batch.shape)
+            # print(instrs_batch)
+            # exit()
+            robot_return =  {
                 'video':  obs_batch, 
                 'instructions': instrs_batch, 
                 'actions': a_batch,
                 'effector_target_translation': eet_batch,
                 'effector_translation': et_batch
-                },
-                
+            }
+        else:
+            robot_return = None
+        return robot_return
+    
+    def collater(self, samples):
+        robot_return = self.prepare_language_table_samples(samples)
+        return {
+           
+            'robot': robot_return,
             'finetune': self.finetune
+           
         }
+        
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
         """

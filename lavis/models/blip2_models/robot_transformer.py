@@ -51,7 +51,7 @@ class RobotTransformer(Blip2Base):
         self,
         vit_model="eva_clip_g",
         img_size=224,
-        drop_path_rate=0,
+        drop_path_rate=0.75,
         use_grad_checkpoint=False,
         vit_precision="fp16",
         freeze_vit=False,
@@ -71,11 +71,12 @@ class RobotTransformer(Blip2Base):
         apply_lemmatizer: when set to True, postprocess predict_answers() result with lemmas.
         """
         super().__init__()
-        
+     
         self.base_model_name = "facebook/opt-125m"
 
         self.tokenizer = init_tokenizer(self.base_model_name)
         self.start_token_id = self.tokenizer.bos_token_id
+        
         self.visual_encoder, self.ln_vision = self.init_vision_encoder(
             vit_model, img_size, drop_path_rate, use_grad_checkpoint, vit_precision, num_frames=num_frames, mae_decoder=mae_decoder
         )
@@ -86,18 +87,6 @@ class RobotTransformer(Blip2Base):
         # self.model = self.model.half()
         self.num_frames = num_frames
 
-        # peft_config = LoraConfig(
-        #             task_type="CAUSAL_LM",
-        #             inference_mode=False, r=8, 
-        #             lora_alpha=8, lora_dropout=0.1,
-        #             target_modules=["q_proj", "v_proj"],
-        #             modules_to_save=["embed_tokens", "lm_head"]
-        # )
-
-
-        # self.model = get_peft_model(self.model, peft_config)
-        # self.model.print_trainable_parameters()
-
         self.model_size = 768
         self.linear_projection = nn.Linear(768, self.model_size).to(torch.float32)
      
@@ -105,6 +94,7 @@ class RobotTransformer(Blip2Base):
 
     
     def generate(self, samples):
+        samples = samples['robot']
         image = samples["video"]
         instructions = samples["instructions"].to(image.device)
 
@@ -139,8 +129,12 @@ class RobotTransformer(Blip2Base):
             frames_embeddings = []
             b, t, c, h, w = image.shape
             video_batch = image.reshape(b * t, c, h, w)
+            # finetune = samples['finetune']
+            # print('finetune: ', finetune)
+            # exit()
 
             features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
+            # masks.append(mask)
             image_embeds = self.ln_vision(features)
             image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
             image_embeds = self.linear_projection(image_embeds)
@@ -258,73 +252,73 @@ class RobotTransformer(Blip2Base):
         
         
             
-            with autocast(dtype=torch.float16):
-                instruction_embeds = self.model.model.get_input_embeddings()(instructions)
-                # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
-                total_embeddings = instruction_embeds.clone()
-                
-                frames_embeddings = []
-                b, t, c, h, w = image.shape
-                video_batch = image.reshape(b * t, c, h, w)
+         
+            instruction_embeds = self.model.model.get_input_embeddings()(instructions)
+            # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
+            total_embeddings = instruction_embeds.clone()
+            
+            frames_embeddings = []
+            b, t, c, h, w = image.shape
+            video_batch = image.reshape(b * t, c, h, w)
 
-                # if epoch < 60 and self.training:
-                features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
-                image_embeds = self.ln_vision(features)
-                if not finetune:
-                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
-                # else:
-                #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
-                #     image_embeds = self.ln_vision(features)
-                #     pred = None
-                
-                image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
-                image_embeds = self.linear_projection(image_embeds)
+            # if epoch < 60 and self.training:
+            features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
+            image_embeds = self.ln_vision(features)
+            if not finetune:
+                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+            # else:
+            #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
+            #     image_embeds = self.ln_vision(features)
+            #     pred = None
+            
+            image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
+            image_embeds = self.linear_projection(image_embeds)
 
-                for i in range(t):
-                    frames_embeddings.append(image_embeds[:, i, :, :])
+            for i in range(t):
+                frames_embeddings.append(image_embeds[:, i, :, :])
+            
+
+            # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+            
+            
+            labels = instructions.clone().to(image.device)
+            for idx in range(max_length):  
+                action_input_ids = actions[:, idx, :].clone()         
+                action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
+                
+                effector_translation_input_ids = effector_translation[:, idx, :].clone()
+                effector_translation_embeddings = self.model.model.get_input_embeddings()(effector_translation_input_ids)
+    
                 
 
-                # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+                effector_target_translation_input_ids = effector_target_translation[:, idx, :].clone()
+                effector_target_translation_embeddings = self.model.model.get_input_embeddings()(effector_target_translation_input_ids)
                 
+                image_embeddings = frames_embeddings[idx]
                 
-                labels = instructions.clone().to(image.device)
-                for idx in range(max_length):  
-                    action_input_ids = actions[:, idx, :].clone()         
-                    action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
-                    
-                    effector_translation_input_ids = effector_translation[:, idx, :].clone()
-                    effector_translation_embeddings = self.model.model.get_input_embeddings()(effector_translation_input_ids)
-        
-                    
+                image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+                effector_target_translation_label = torch.ones((b, effector_target_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+                effector_translation_label = torch.ones((b, effector_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
 
-                    effector_target_translation_input_ids = effector_target_translation[:, idx, :].clone()
-                    effector_target_translation_embeddings = self.model.model.get_input_embeddings()(effector_target_translation_input_ids)
-                    
-                    image_embeddings = frames_embeddings[idx]
-                    
-                    image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-                    effector_target_translation_label = torch.ones((b, effector_target_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-                    effector_translation_label = torch.ones((b, effector_translation_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-
-                    total_embeddings = torch.cat((total_embeddings, image_embeddings, effector_translation_embeddings,
-                                                effector_target_translation_embeddings, action_embeddings), dim = 1 )
-                    
-                    #prepend -100 to labels for image patches
-                    labels = torch.cat((labels.long(), 
-                                        image_label.long(),
-                                        effector_translation_label.long(),
-                                        effector_target_translation_label.long(),
-                                            action_input_ids.clone().long()), dim=1)
-                    # exit()
-                    # Generate the next token
-                    # TODO: replace image with image special token in label
-                    
-                output = self.model(
-                    inputs_embeds = total_embeddings,
-                    labels = labels,
-                )
-                loss1 = output.loss
+                total_embeddings = torch.cat((total_embeddings, image_embeddings, effector_translation_embeddings,
+                                            effector_target_translation_embeddings, action_embeddings), dim = 1 )
+                
+                #prepend -100 to labels for image patches
+                labels = torch.cat((labels.long(), 
+                                    image_label.long(),
+                                    effector_translation_label.long(),
+                                    effector_target_translation_label.long(),
+                                        action_input_ids.clone().long()), dim=1)
+                # exit()
+                # Generate the next token
+                # TODO: replace image with image special token in label
+                
+            output = self.model(
+                inputs_embeds = total_embeddings,
+                labels = labels,
+            )
+            loss1 = output.loss
                 
 
          
@@ -342,67 +336,67 @@ class RobotTransformer(Blip2Base):
         
         
             
-            with autocast(dtype=torch.float16):
-                instruction_embeds = self.model.model.get_input_embeddings()(instructions)
-                # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
-                total_embeddings = instruction_embeds.clone()
-                
-                frames_embeddings = []
-                b, t, c, h, w = image.shape
-                video_batch = image.reshape(b * t, c, h, w)
+            
+            instruction_embeds = self.model.model.get_input_embeddings()(instructions)
+            # total_embeddings = torch.empty((instruction_embeds.shape[0], 0, self.model_size), dtype=torch.float16).to(image.device)
+            total_embeddings = instruction_embeds.clone()
+            
+            frames_embeddings = []
+            b, t, c, h, w = image.shape
+            video_batch = image.reshape(b * t, c, h, w)
 
-                # if epoch < 60 and self.training:
-                features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
-                image_embeds = self.ln_vision(features)
-                if not finetune:
-                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
-                # else:
-                #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
-                #     image_embeds = self.ln_vision(features)
-                #     pred = None
-                
-                image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
-                image_embeds = self.linear_projection(image_embeds)
+            # if epoch < 60 and self.training:
+            features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = True) # (N, 1, C, H, W)
+            image_embeds = self.ln_vision(features)
+            if not finetune:
+                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+            # else:
+            #     features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1), use_mask = False)
+            #     image_embeds = self.ln_vision(features)
+            #     pred = None
+            
+            image_embeds = image_embeds.reshape( b, t, image_embeds.shape[-2], image_embeds.shape[-1])
+            image_embeds = self.linear_projection(image_embeds)
 
-                for i in range(t):
-                    frames_embeddings.append(image_embeds[:, i, :, :])
+            for i in range(t):
+                frames_embeddings.append(image_embeds[:, i, :, :])
+            
+
+            # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+            
+            
+            labels = instructions.clone().to(image.device)
+            for idx in range(max_length):  
+                action_input_ids = actions[:, idx, :].clone()         
+                action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
+                
+                robot_state_input_ids = robot_state[:, idx, :].clone()
+                robot_state_embeddings = self.model.model.get_input_embeddings()(robot_state_input_ids)
+    
+                image_embeddings = frames_embeddings[idx]
+                
+                image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
+                robot_state_embeddings_label = torch.ones((b, robot_state_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
                 
 
-                # total_embeddings = torch.empty((b, 0, 768), dtype=torch.float16).to(image.device)
+                total_embeddings = torch.cat((total_embeddings, image_embeddings,
+                                            robot_state_embeddings, action_embeddings), dim = 1 )
                 
+                #prepend -100 to labels for image patches
+                labels = torch.cat((labels.long(), 
+                                    image_label.long(),
+                                    robot_state_embeddings_label.long(),
+                                        action_input_ids.clone().long()), dim=1)
+                # exit()
+                # Generate the next token
+                # TODO: replace image with image special token in label
                 
-                labels = instructions.clone().to(image.device)
-                for idx in range(max_length):  
-                    action_input_ids = actions[:, idx, :].clone()         
-                    action_embeddings = self.model.model.get_input_embeddings()(action_input_ids)
-                    
-                    robot_state_input_ids = robot_state[:, idx, :].clone()
-                    robot_state_embeddings = self.model.model.get_input_embeddings()(robot_state_input_ids)
-        
-                    image_embeddings = frames_embeddings[idx]
-                    
-                    image_label = torch.ones((b, image_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-                    robot_state_embeddings_label = torch.ones((b, robot_state_embeddings.shape[1]), dtype=torch.long).to(image.device) * (-100)
-                   
-
-                    total_embeddings = torch.cat((total_embeddings, image_embeddings,
-                                                robot_state_embeddings, action_embeddings), dim = 1 )
-                    
-                    #prepend -100 to labels for image patches
-                    labels = torch.cat((labels.long(), 
-                                        image_label.long(),
-                                        robot_state_embeddings_label.long(),
-                                            action_input_ids.clone().long()), dim=1)
-                    # exit()
-                    # Generate the next token
-                    # TODO: replace image with image special token in label
-                    
-                output = self.model(
-                    inputs_embeds = total_embeddings,
-                    labels = labels,
-                )
-                loss2 = output.loss
+            output = self.model(
+                inputs_embeds = total_embeddings,
+                labels = labels,
+            )
+            loss2 = output.loss
         # processing minecraft data
         if minecraft_samples:
             if "image" in minecraft_samples.keys():
@@ -445,69 +439,69 @@ class RobotTransformer(Blip2Base):
             frames_embeddings = []
             b, t, c, h, w = image.shape
             video_batch = image.reshape(b * t, c, h, w)
-            with autocast(dtype=torch.float16):
-                instruction_embeds = self.model.model.get_input_embeddings()(instructions_tokens.input_ids)
+            
+            instruction_embeds = self.model.model.get_input_embeddings()(instructions_tokens.input_ids)
 
-                features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
-                image_embeds = self.ln_vision(features)
+            features, mask, ids_restore =   self.visual_encoder(video_batch.unsqueeze(1)) # (N, 1, C, H, W)
+            image_embeds = self.ln_vision(features)
 
-                if not finetune:
-                    pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
-                    mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
+            if not finetune:
+                pred = self.visual_encoder.forward_decoder(image_embeds, ids_restore)
+                mae_loss +=   self.visual_encoder.forward_loss(video_batch.unsqueeze(1), pred, mask)
 
-                image_embeds = image_embeds.reshape( b, self.num_frames, image_embeds.shape[-2], image_embeds.shape[-1])
+            image_embeds = image_embeds.reshape( b, self.num_frames, image_embeds.shape[-2], image_embeds.shape[-1])
 
-                for i in range(num_frames):
-                    frames_embeddings.append(image_embeds[:, i, :, :])
+            for i in range(num_frames):
+                frames_embeddings.append(image_embeds[:, i, :, :])
+            
+
+            # total_embeddings = torch.empty((b, 0, 768)).to(image.device)
+            total_embeddings = instruction_embeds.clone()
+            
+            # labels = torch.empty((b, 0), dtype=torch.long).to(image.device)
+            labels = instructions_tokens.input_ids.clone().to(image.device)
+            for idx in range(max_length):  
                 
-
-                # total_embeddings = torch.empty((b, 0, 768)).to(image.device)
-                total_embeddings = instruction_embeds.clone()
+                text_output_idx = [ text[idx] for text in text_output_final ]
                 
-                # labels = torch.empty((b, 0), dtype=torch.long).to(image.device)
-                labels = instructions_tokens.input_ids.clone().to(image.device)
-                for idx in range(max_length):  
-                    
-                    text_output_idx = [ text[idx] for text in text_output_final ]
-                    
-                    # print('text_output_idx: ', text_output_idx)
-                    target_tokens = self.tokenizer(
-                        text_output_idx,
-                        padding='longest',
-                        truncation=True,
-                        max_length=self.num_frames * 100,
-                        add_special_tokens = False,
-                        # skip_special_tokens=False,
-                        return_tensors="pt"
-                    ).to(image.device)
-                    
-                    input_ids = target_tokens.input_ids
-                    # print('input ids: ', input_ids)
-                    # exit()
+                # print('text_output_idx: ', text_output_idx)
+                target_tokens = self.tokenizer(
+                    text_output_idx,
+                    padding='longest',
+                    truncation=True,
+                    max_length=self.num_frames * 100,
+                    add_special_tokens = False,
+                    # skip_special_tokens=False,
+                    return_tensors="pt"
+                ).to(image.device)
                 
-                    text_embeddings = self.model.model.get_input_embeddings()(input_ids)
-                    image_embeddings = frames_embeddings[idx]
-                    
-                    
-                    total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
-                    text_labels = input_ids.clone()
+                input_ids = target_tokens.input_ids
+                # print('input ids: ', input_ids)
+                # exit()
+            
+                text_embeddings = self.model.model.get_input_embeddings()(input_ids)
+                image_embeddings = frames_embeddings[idx]
+                
+                
+                total_embeddings = torch.cat((total_embeddings, image_embeddings, text_embeddings), dim = 1 )
+                text_labels = input_ids.clone()
 
-                    #prepend -100 to labels for image patches
-                    labels = torch.cat((labels, torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, text_labels), dim=1)
+                #prepend -100 to labels for image patches
+                labels = torch.cat((labels, torch.ones((labels.shape[0], image_embeddings.shape[1]), dtype=torch.long).to(image.device) * -100, text_labels), dim=1)
 
-                    
-                    output = self.model(
-                        inputs_embeds = total_embeddings,
-                        labels = labels,
-                    )
-                    loss3 = output.loss
+                
+                output = self.model(
+                    inputs_embeds = total_embeddings,
+                    labels = labels,
+                )
+                loss3 = output.loss
         
-        with autocast(dtype=torch.float16):
-            if finetune:
-                total_loss = loss1 + loss2 + loss3 
-            else:
-                total_loss = 2 * (loss1 + loss2 + loss3) + mae_loss
-            return {"loss": total_loss}
+    
+        # if finetune:
+        #     total_loss = loss1 + loss2 + loss3 
+        # else:
+        total_loss = 2 * (loss1 + loss2 + loss3) + mae_loss
+        return {"loss": total_loss}
 
 
     @classmethod

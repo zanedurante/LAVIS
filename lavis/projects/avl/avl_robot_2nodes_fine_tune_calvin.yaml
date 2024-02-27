@@ -15,7 +15,7 @@ model:
   mae_docoder: True
 
 datasets:
-  language_tableamlt: # name of the dataset builder
+  calvin_amlt: # name of the dataset builder
     data_type: videos
     finetune: False
 
@@ -38,13 +38,13 @@ run:
   num_beams: 3
 
   seed: 42
-  output_dir: "/mnt/datasets_mnt/output/Trio/LanguageTableScratch"
+  output_dir: "/mnt/datasets_mnt/output/Trio/CalvinScratch"
 
   # logging
   log: wandb
 
   amp: False
-  resume_ckpt_path:  /mnt/datasets_mnt/output/Trio/LanguageTableScratch/20240201005/checkpoint_37.pth #"/mnt/datasets_mnt/output/Trio/LanguageTableFineTune/20240129101/checkpoint_150.pth"  #/mnt/output/Trio/Pretraining/20240123025/checkpoint_100.pth 
+  resume_ckpt_path:  /mnt/datasets_mnt/output/Trio/CalvinScratch/20240201004/checkpoint_80.pth #/mnt/datasets_mnt/output/Trio/LanguageTableFineTuneCalvin/20240128180/checkpoint_150.pth #"/mnt/datasets_mnt/output/Trio/LanguageTableFineTune/20240108101/checkpoint_52.pth" 
 
   evaluate: False 
   train_splits: ["train"]
@@ -52,6 +52,6 @@ run:
   test_splits: ["eval"]
 
   device: "cuda"
-  world_size: 96
+  world_size: 64
   dist_url: "env://"
   distributed: True

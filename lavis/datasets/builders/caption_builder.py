@@ -47,6 +47,10 @@ from lavis.datasets.datasets.pretraining_dataset import (
     PretrainingDatasetAMLT
 )
 
+from lavis.datasets.datasets.calvin_datasetamlt import (
+    CalvinDatasetAMLTTrain, CalvinDatasetAMLTEval
+)
+
 @registry.register_builder("pretraining_amlt")
 class PretraningBuilder(BaseDatasetBuilder):
     def __init__(self, *args, **kwargs):
@@ -91,6 +95,33 @@ class PretraningBuilder(BaseDatasetBuilder):
             )
 
         return datasets
+    
+@registry.register_builder("calvin_amlt")
+class CalvinBuilderAMLT(BaseDatasetBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_dataset_cls = CalvinDatasetAMLTTrain
+        self.eval_dataset_cls = CalvinDatasetAMLTEval
+
+    DATASET_CONFIG_DICT = {
+        "default": "configs/datasets/calvin/default_action.yaml", 
+    }
+
+    def build_datasets(self, cfg=None):
+        print("Assuming calvin dataset is already stored -- skipping build!!")
+        datasets = {"train": None, "eval": None}
+
+        self.build_processors()
+        
+        finetune = self.config.get("finetune", False)
+
+        for split, dataset_cls in zip(["train", "eval"], [self.train_dataset_cls, self.eval_dataset_cls]):
+            is_train = split == "train"
+            datasets[split] = dataset_cls(
+                finetune=finetune
+            )
+
+        return datasets
 
 @registry.register_builder("language_table")
 class LanguageTableBuilderLocal(BaseDatasetBuilder):
@@ -118,6 +149,7 @@ class LanguageTableBuilderLocal(BaseDatasetBuilder):
             )
 
         return datasets
+    
     
 @registry.register_builder("language_tableamlt")
 class LanguageTableBuilderAMLT(BaseDatasetBuilder):

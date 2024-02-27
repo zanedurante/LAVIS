@@ -1,7 +1,7 @@
 from transformers import  AutoTokenizer
 BIN_SIZES = {
-            'language_table': -1,
-            'calvin': -1
+            'language_table': 20,
+            'calvin': 20
 }
 
 def init_tokenizer(base_model_name, bin_sizes=None):
@@ -12,6 +12,8 @@ def init_tokenizer(base_model_name, bin_sizes=None):
             bin_sizes = BIN_SIZES
         
         BIN_SIZES = bin_sizes
+        # print('bin sizes: ', bin_sizes)
+        # exit()
 
         language_table_bin_size = bin_sizes['language_table']
         calvin_bin_size = bin_sizes['calvin']
@@ -67,7 +69,7 @@ def init_tokenizer(base_model_name, bin_sizes=None):
         new_tokens = [ f'[{new_token}]' for new_token in new_tokens ]
         tokenizer.add_tokens(new_tokens)
         camera_actions = []
-        for i in range(-49, 50):
+        for i in range(-49, 51):
             camera_actionx = f'[CAMERAX{i}]'
             camera_actiony = f'[CAMERAY{i}]'
             camera_actions.extend([camera_actionx, camera_actiony])
@@ -84,5 +86,12 @@ def init_tokenizer(base_model_name, bin_sizes=None):
                 tokenizer.add_tokens([f"[ROBOTSTATE{i}_{j}]"])
         
         tokenizer.add_tokens(['[GRIPPER_OPEN]', '[GRIPPER_CLOSE]', '[GRIPPER_OPENED]', '[GRIPPER_CLOSED]'])
+        BE_ACTIONS_LIST = ["Evade", "Jump", "LockOn", "Mount", "MeleeAttack", "SpecialAbility1", "SpecialAbility2", "SpecialAbility3", "SuperAbility", "SwitchLockOnTarget", "Taunt"]
+
+        tokenizer.add_tokens([f'[{x}]' for x in BE_ACTIONS_LIST])
+        tokenizer.add_tokens([f'[lrot{rot + 1}]' for rot in range(256)])
+        tokenizer.add_tokens([f'[lmag{mag + 1}]' for mag in range(4)])
+        tokenizer.add_tokens([f'[rrot{rot + 1}]' for rot in range(256)])
+        tokenizer.add_tokens([f'[rmag{mag + 1}]' for mag in range(4)])
 
         return tokenizer

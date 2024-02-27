@@ -15,6 +15,7 @@ from lavis.common.logger import MetricLogger, SmoothedValue
 from lavis.common.registry import registry
 from lavis.datasets.data_utils import prepare_sample
 import wandb
+import time
 
 class BaseTask:
     def __init__(self, **kwargs):
@@ -222,6 +223,7 @@ class BaseTask:
 
         for i in metric_logger.log_every(range(iters_per_epoch), log_freq, header):
             # if using iter-based runner, we stop after iters_per_epoch iterations.
+            start_time = time.time()
             if i >= iters_per_epoch:
                 break
 
@@ -262,6 +264,10 @@ class BaseTask:
                 wandb.log(loss_dict)
             metric_logger.update(**loss_dict)
             metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+            end_time = time.time()
+            time_to_sleep = (end_time - start_time) * 0.05
+            time.sleep(time_to_sleep)
 
         # after train_epoch()
         # gather the stats from all processes

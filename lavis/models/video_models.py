@@ -296,8 +296,12 @@ class GatedTimeVarAttention(VarAttention):
     def forward(self, x, einops_from, einops_to, **einops_dims):
         num_input_patches = x.size(1) - 1
         if num_input_patches == self.patches_per_frame and not self.training:
+            print('skipeed')
+            exit()
             return x
         if num_input_patches == self.patches_per_frame_after_dropout and self.training:
+            print('skipeed')
+            exit()
             return x
         h = self.num_heads
         # project x to q, k, v values
@@ -879,6 +883,8 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
 
     vit_checkpoint = vit_model.state_dict()
     ckpt_vals = model.load_state_dict(vit_checkpoint, strict=False)
+
+
     # model = model.to(torch.bfloat16)
 
     # nn.init.zeros_(model.patch_embed.proj.bias) # TODO: Change bias to be False and add flag during init
@@ -905,7 +911,9 @@ def create_vit_b_video(img_size=224,drop_path_rate=0.5,use_checkpoint=False,prec
     #             p.requires_grad = False
     #     else:
     #         print(f"Skipping {name} for freezing")
-    model.fc = nn.Identity()
+    # model.fc = nn.Identity()
+
+    
     #model.vid_proj = nn.Linear()
     #with torch.no_grad():
     # model.image_proj = nn.Linear(768, 512) # CLIP Vision to CLIP text embed space

@@ -134,6 +134,7 @@ def concat_datasets(datasets):
     # concatenate datasets in the same split
     for split_name in datasets:
         if split_name != "train":
+            print(datasets[split_name], split_name)
             assert (
                 len(datasets[split_name]) == 1
             ), "Do not support multiple {} datasets.".format(split_name)

@@ -634,7 +634,7 @@ class RunnerBase:
         state_dict = checkpoint["model"]
         self.unwrap_dist_model(self.model).load_state_dict(state_dict)
 
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        # self.optimizer.load_state_dict(checkpoint["optimizer"])
         if self.scaler and "scaler" in checkpoint:
             self.scaler.load_state_dict(checkpoint["scaler"])
 

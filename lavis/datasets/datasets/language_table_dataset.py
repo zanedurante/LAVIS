@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from lavis.datasets.datasets.base_dataset import BaseDataset
 from transformers import AutoTokenizer
 from torchvision import transforms
-
+from lavis.models.model_utils import init_tokenizer
 def init_transform_dict(input_res=224,
                         center_crop=256,
                         randcrop_scale=(0.5, 1.0),
@@ -55,7 +55,7 @@ class LanguageTableDatasetTrain(BaseDataset):
     """
 
     """
-    def __init__(self):
+    def __init__(self, finetune=False):
         self.basedir = '/home/nikepupu/dataset/language_table1kfull'
         # load all npz files under the directory
         # self.episodes = []
@@ -69,26 +69,11 @@ class LanguageTableDatasetTrain(BaseDataset):
         self.base_model_name = "facebook/opt-125m"
         total = len(self.files)
         self.files = self.files
-        self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        for i in range(21):
-            self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
-        
-        
-        self.tokenizer.add_tokens(['[ENDOFACTION]'])
-        self.tokenizer.add_tokens(['[STARTACTION]'])
-        self.tokenizer.add_tokens(['[TERMINAL]'])
-        
-        self.tokenizer.add_tokens(['[STARTEET]'])
-        self.tokenizer.add_tokens(['[ENDOFEET]'])
-
-        self.tokenizer.add_tokens(['[STARTEETT]'])
-        self.tokenizer.add_tokens(['[ENDOFEETT]'])
-
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer = init_tokenizer(self.base_model_name)
+        self.bin_size = 20
 
         self.transforms = self.get_transforms()
+        self.finetune = finetune
         
         
     def __len__(self):
@@ -113,13 +98,16 @@ class LanguageTableDatasetTrain(BaseDataset):
             return padded_tensor
         
             # return F.pad(input_tensor, (0, 0, 0, 0, 0, 0, 0, pad_size), "constant", 0)
- 
+
+        # print('samples: ', samples)
+        # exit()
         for sample in samples:            
             obs =  pad_tensor(torch.tensor(np.array(sample['observations'])).unsqueeze(0), m_obs)
             obs_batch.append(obs)
             instr = sample['instructions'][0]
             instr = ''.join(chr(id) for id in instr if id != 0)
             instrs_batch.append(instr)
+            print('instructions: ', instr)
             actions = sample['action']
             effector_target_translation.append(sample['effector_target_translation'])
             
@@ -193,12 +181,17 @@ class LanguageTableDatasetTrain(BaseDataset):
         # print(eet_batch.shape)
         # print(et_batch.shape)
         # exit()
-        return {
-            'video':  obs_batch, 
-            'instructions': instrs_batch, 
-            'actions': a_batch,
-            'effector_target_translation': eet_batch,
-            'effector_translation': et_batch
+        return { 
+            'robot':{
+                'video':  obs_batch, 
+                'instructions': instrs_batch, 
+                'actions': a_batch,
+                'effector_target_translation': eet_batch,
+                'effector_translation': et_batch
+                },
+
+            'finetune': self.finetune
+
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):
@@ -245,23 +238,23 @@ class LanguageTableDatasetTrain(BaseDataset):
             instruction = step['instruction'] 
             instruction = ''.join(chr(id) for id in instruction)
             instrs.append(step['instruction'])
-            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, 20))
-            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, 20))
+            ee_t_first_dim =  int(self.get_bin_id(step['effector_translation'][0], 0.15, 0.6, self.bin_size ))
+            ee_t_second_dim = int(self.get_bin_id(step['effector_translation'][1], -0.3, 0.3, self.bin_size ))
             effector_translations.append(f"[STARTEET][ROBOTEETX{ee_t_first_dim}][ROBOTEETY{ee_t_second_dim}][ENDOFEET]")
 
-            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, 20))
-            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, 20))
+            ee_tt_first_dim =  int(self.get_bin_id(step['effector_target_translation'][0], 0.15, 0.6, self.bin_size ))
+            ee_tt_second_dim = int(self.get_bin_id(step['effector_target_translation'][1], -0.3, 0.3, self.bin_size ))
             effector_target_translation.append(f"[STARTEETT][ROBOTEETTX{ee_tt_first_dim}][ROBOTEETTY{ee_tt_second_dim}][ENDOFEETT]")
 
             if not step['is_terminal']:
-                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, 20))
-                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, 20))
+                first_dim =  int(self.get_bin_id(step['action'][0], -0.03, 0.03, self.bin_size ))
+                second_dim = int(self.get_bin_id(step['action'][1], -0.03, 0.03, self.bin_size ))
                 actions.append(f"[STARTACTION][ROBOTACTIONX{first_dim}][ROBOTACTIONY{second_dim}][ENDOFACTION]")
             else:
                 actions.append('[STARTACTION][TERMINAL][TERMINAL][ENDOFACTION]')
 
         # return obs, instrs, actions, is_firsts, is_lasts, is_terminals
-    
+        
         return {
             "observations": obs,
             "instructions": instrs, 
@@ -274,7 +267,7 @@ class LanguageTableDatasetEval(BaseDataset):
     """
 
     """
-    def __init__(self):
+    def __init__(self, finetune=False):
         self.basedir = '/home/nikepupu/dataset/language_table1kfull'
         # load all npz files under the directory
         # self.episodes = []
@@ -289,26 +282,10 @@ class LanguageTableDatasetEval(BaseDataset):
         self.files = self.files[int(total * 0.9):]
 
         self.base_model_name = "facebook/opt-125m"
-        self.tokenizer =  AutoTokenizer.from_pretrained(self.base_model_name)
-        
-        for i in range(21):
-            self.tokenizer.add_tokens([f"[ROBOTACTIONX{i}]", f"[ROBOTACTIONY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETX{i}]", f"[ROBOTEETY{i}]"])
-            self.tokenizer.add_tokens([f"[ROBOTEETTX{i}]", f"[ROBOTEETTY{i}]"])
-        
-        self.tokenizer.add_tokens(['[ENDOFACTION]'])
-        self.tokenizer.add_tokens(['[STARTACTION]'])
-        self.tokenizer.add_tokens(['[TERMINAL]'])
-        
-        self.tokenizer.add_tokens(['[STARTEET]'])
-        self.tokenizer.add_tokens(['[ENDOFEET]'])
-
-        self.tokenizer.add_tokens(['[STARTEETT]'])
-        self.tokenizer.add_tokens(['[ENDOFEETT]'])
-
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer =  init_tokenizer(self.base_model_name)
 
         self.transforms = self.get_transforms()
+        self.finetune = finetune
         
         
     def __len__(self):
@@ -411,12 +388,17 @@ class LanguageTableDatasetEval(BaseDataset):
         # print(obs_batch.shape)
         # print(instrs_batch)
         # exit()
-        return {
-            'video':  obs_batch, 
-            'instructions': instrs_batch, 
-            'actions': a_batch,
-            'effector_target_translation': eet_batch,
-            'effector_translation': et_batch
+        return { 
+            'robot':{
+                'video':  obs_batch, 
+                'instructions': instrs_batch, 
+                'actions': a_batch,
+                'effector_target_translation': eet_batch,
+                'effector_translation': et_batch
+                },
+
+            'finetune': self.finetune
+
         }
     
     def get_bin_id(self, number, range_min, range_max, num_bins):

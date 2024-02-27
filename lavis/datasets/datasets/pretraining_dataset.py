@@ -241,6 +241,9 @@ class PretrainingDatasetAMLT(TrioVideoCaptionDataset):
         self.robot_obs_mean = self.statistics['robot_obs'][0]['mean']
         self.robot_obs_std = self.statistics['robot_obs'][0]['std']
 
+        self.action_min = self.statistics['act_min_bound']
+        self.action_max = self.statistics['act_max_bound']
+
         self.language =  self.annotation['language']['ann']
        
         self.annotated_episodis = self.annotation['info']['indx']
